@@ -46,10 +46,19 @@ export default {
 <style>/* 隐藏全局滚动条 */
 html, body {
   overflow: hidden !important;
+  margin: 0;
+  padding: 0;
+  height: 100%;
 }
 
 .v-application {
   overflow: hidden !important;
+  height: 100vh !important;
+}
+
+.main-container {
+  height: calc(100vh) !important;
+  overflow: hidden;
 }
 
 /* 自定义滚动条样式 */

@@ -95,22 +95,8 @@
   //
 </script>
 
-<style>
-/* 隐藏全局滚动条 */
-html, body {
-  overflow: hidden !important;
-}
-
-.v-application {
-  overflow: hidden !important;
-}
-</style>
 
 <style scoped>
-.main-container {
-  height: calc(100vh - 64px);
-  overflow: hidden;
-}
 
 .content-wrapper {
   display: flex;
