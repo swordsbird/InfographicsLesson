@@ -1,6 +1,6 @@
 <template>
   <!-- 主内容区 -->
-  <v-main class="bg-white main-container">
+  <v-main class="bg-grey-lighten-4 main-container">
     <div class="content-wrapper">
       <!-- 左侧边栏 - 20% -->
       <div class="left-sidebar">
@@ -66,89 +66,6 @@
       <!-- 中间画布区域 - 60% -->
       <div class="canvas-container" @click="handleCanvasClick">
         <!-- 浮动工具栏 -->
-        <div 
-          class="toolbox"
-          :style="{
-            left: `${toolboxPosition.x}px`,
-            top: `${toolboxPosition.y}px`
-          }"
-          @mousedown.stop="startToolboxDrag"
-        >
-          <div class="toolbox-handle">
-            <v-icon size="small" color="white">mdi-drag</v-icon>
-          </div>
-          
-          <div class="toolbox-content">
-            <!-- 工具选择 -->
-            <v-btn-toggle 
-              v-model="currentMode" 
-              mandatory 
-              density="comfortable"
-              rounded="lg"
-              class="toolbox-buttons mb-2"
-            >
-              <v-btn 
-                :value="ELEMENT_TYPES.BOUNDING_BOX" 
-                :class="{ 'active': currentMode === ELEMENT_TYPES.BOUNDING_BOX }"
-              >
-                <v-icon>mdi-vector-rectangle</v-icon>
-                <span class="ml-2">框选</span>
-              </v-btn>
-              <v-btn 
-                :value="ELEMENT_TYPES.TEXT" 
-                :class="{ 'active': currentMode === ELEMENT_TYPES.TEXT }"
-              >
-                <v-icon>mdi-format-text</v-icon>
-                <span class="ml-2">文本</span>
-              </v-btn>
-              <v-btn
-                :value="ELEMENT_TYPES.PICTOGRAM"
-                :class="{ 'active': currentMode === ELEMENT_TYPES.PICTOGRAM }"
-              >
-                <v-icon>mdi-image</v-icon>
-                <span class="ml-2">图标</span>
-              </v-btn>
-              <v-btn
-                :value="ELEMENT_TYPES.OTHER"
-                :class="{ 'active': currentMode === ELEMENT_TYPES.OTHER }"
-              >
-                <v-icon>mdi-shape</v-icon>
-                <span class="ml-2">其他</span>
-              </v-btn>
-            </v-btn-toggle>
-            
-            <div class="color-picker" v-if="currentMode === ELEMENT_TYPES.TEXT">
-              <div class="color-circles">
-                <div
-                  v-for="color in TEXT_COLORS"
-                  :key="color.value"
-                  class="color-circle"
-                  :class="{ 'active': currentTextColor === color.value }"
-                  :style="{ 
-                    backgroundColor: color.value,
-                    border: '2px solid #ddd'
-                  }"
-                  @click="handleColorSelect(color.value)"
-                ></div>
-              </div>
-            </div>
-            
-            <div class="pictogram-picker" v-if="currentMode === ELEMENT_TYPES.PICTOGRAM">
-              <div class="pictogram-circles d-flex">
-                <div
-                  v-for="pictogram in PICTOGRAMS" 
-                  :key="pictogram.value"
-                  class="pictogram-circle mx-1"
-                  :class="{ 'active': currentPictogram === pictogram.value }"
-                  :style="{ border: '2px solid #ddd' }"
-                  @click="handlePictogramSelect(pictogram.value)"
-                >
-                  <div class="pictogram-svg" v-html="pictogram.value" style="width: 36px; height: 36px;"></div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
 
         <!-- 画布 -->
         <div 
@@ -161,6 +78,7 @@
             cover
             class="canvas-image"
             :draggable="false"
+            @load="handleImageLoad"
           ></v-img>
           <!-- 渲染所有可绘制元素 -->
           <template v-for="(element, index) in drawElements" :key="element.id">
@@ -200,7 +118,7 @@
                   :style="{
                     color: element.style.color,
                     fontSize: element.style.fontSize,
-                    fontStyle: element.style.fontStyle
+                    fontWeight: element.style.fontWeight
                   }"
                   v-text="element.content"
                 ></div>
@@ -211,7 +129,7 @@
                   :style="{
                     color: element.style.color,
                     fontSize: element.style.fontSize,
-                    fontStyle: element.style.fontStyle
+                    fontWeight: element.style.fontWeight
                   }"
                 >{{ element.content }}</div>
               </template>
@@ -226,69 +144,147 @@
         </div>
       </div>
 
-      <!-- 右侧边栏 - 20% -->
+      <!-- 右侧边栏 -->
       <div class="right-sidebar">
-        <!-- 分析按钮区域 -->
-        <div class="analyze-section">
-          <v-btn
-            block
-            color="gray"
-            size="large"
-            class="ma-4"
-            :loading="analyzing"
-            :disabled="!selectedImage"
-            @click="analyzeImage"
-            prepend-icon="mdi-magnify"
-          >
-            {{ analyzing ? '分析中...' : '分析图片' }}
-          </v-btn>
-          <v-divider></v-divider>
+        <!-- 工具栏 -->
+        <div class="toolbox">
+          <div class="toolbox-content">
+            <v-btn-toggle v-model="currentMode">
+              <!-- 工具选择 -->
+                <v-btn 
+                  :value="ELEMENT_TYPES.BOUNDING_BOX" 
+                  :class="{ 'active': currentMode === ELEMENT_TYPES.BOUNDING_BOX }"
+                >
+                  <v-icon>mdi-vector-rectangle</v-icon>
+                </v-btn>
+                <v-btn 
+                  :value="ELEMENT_TYPES.TEXT" 
+                  :class="{ 'active': currentMode === ELEMENT_TYPES.TEXT }"
+                >
+                  <v-icon>mdi-format-text</v-icon>
+                </v-btn>
+                <v-btn
+                  :value="ELEMENT_TYPES.PICTOGRAM"
+                  :class="{ 'active': currentMode === ELEMENT_TYPES.PICTOGRAM }"
+                >
+                  <v-icon>mdi-image</v-icon>
+                </v-btn>
+                <v-btn
+                  :value="ELEMENT_TYPES.OTHER"
+                  :class="{ 'active': currentMode === ELEMENT_TYPES.OTHER }"
+                >
+                  <v-icon>mdi-shape</v-icon>
+                </v-btn>
+              </v-btn-toggle>
+            
+            
+            <div class="pictogram-picker" v-if="currentMode === ELEMENT_TYPES.PICTOGRAM">
+              <div class="pictogram-circles d-flex">
+                <div
+                  v-for="pictogram in PICTOGRAMS" 
+                  :key="pictogram.value"
+                  class="pictogram-circle mx-1"
+                  :class="{ 'active': currentPictogram === pictogram.value }"
+                  :style="{ border: '2px solid #ddd' }"
+                  @click="handlePictogramSelect(pictogram.value)"
+                >
+                  <div class="pictogram-svg" v-html="pictogram.value" style="width: 36px; height: 36px;"></div>
+                </div>
+              </div>
+            </div>
+            <!-- 颜色选择器 (当选择文本工具时显示) -->
+            <div class="color-picker" v-if="currentMode === ELEMENT_TYPES.TEXT">
+              <div class="tool-section">
+                <div class="tool-label">颜色</div>
+                <div class="color-circles justify-start">
+                  <div
+                    v-for="color in TEXT_COLORS"
+                    :key="color.value"
+                    class="color-circle"
+                    :class="{ 'active': currentTextStyle.color === color.value }"
+                    :style="{ backgroundColor: color.value }"
+                    @click="handleStyleSelect('color', color.value)"
+                  ></div>
+                </div>
+              </div>
+
+              <!-- 字体样式按钮组 -->
+              <div class="tool-section">
+                <div class="tool-label">样式</div>
+                <v-btn-toggle
+                  v-model="currentTextStyle.fontWeight"
+                  density="comfortable"
+                  class="font-style-toggle"
+                >
+                  <v-btn value="normal" 
+                    @click="handleStyleSelect('fontWeight', 'normal')"
+                  >
+                    <v-icon>mdi-format-text</v-icon>
+                  </v-btn>
+                  <v-btn value="bold"
+                    @click="handleStyleSelect('fontWeight', 'bold')"
+                  >
+                    <v-icon>mdi-format-bold</v-icon>
+                  </v-btn>
+                </v-btn-toggle>
+              </div>
+
+              <!-- 字体大小按钮组 -->
+              <div class="tool-section">
+                <div class="tool-label">大小</div>
+                <v-btn-toggle
+                  v-model="currentTextStyle.fontSize"
+                  density="comfortable"
+                  class="font-size-toggle"
+                >
+                  <v-btn value="12px"
+                    @click="handleStyleSelect('fontSize', '12px')"
+                  >
+                    <v-icon>mdi-format-size</v-icon>
+                    <span class="text-caption">小</span>
+                  </v-btn>
+                  <v-btn value="16px"
+                    @click="handleStyleSelect('fontSize', '16px')"
+                  >
+                    <v-icon>mdi-format-size</v-icon>
+                    <span class="text-subtitle-2">中</span>
+                  </v-btn>
+                  <v-btn value="20px"
+                    @click="handleStyleSelect('fontSize', '20px')"
+                  >
+                    <v-icon>mdi-format-size</v-icon>
+                    <span class="text-h6">大</span>
+                  </v-btn>
+                </v-btn-toggle>
+              </div>
+            </div>
+          </div>
         </div>
 
-        <!-- 使用 VueDraggableNext -->
-        <div class="detection-list">
-          <VueDraggableNext 
-            :list="drawElements"
-            item-key="id"
-            handle=".drag-handle"
-            @end="handleDragEnd"
-            tag="div"
-            class="dragArea"
+        <!-- 分析部分 -->
+        <div class="analyze-section">
+          <!-- 添加分析按钮 -->
+          <v-btn
+            color="dark"
+            density="comfortable"
+            class="mb-4"
+            :loading="analyzing"
+            @click="analyzeImage"
           >
-            <template #item="{element, index}">
-              <v-list-item
-                class="box-list-item mb-2"
-                :class="{ 'selected-box': selectedElementIndex === index }"
-                @click="selectedElementIndex = index"
-              >
-                <!-- 拖拽手柄 -->
-                <template v-slot:prepend>
-                  <v-icon 
-                    class="drag-handle mr-2"
-                    color="grey"
-                    size="small"
-                  >
-                    mdi-drag
-                  </v-icon>
-                  <div
-                    class="box-color-mark"
-                    :style="{
-                      backgroundColor: element.type === ELEMENT_TYPES.BOUNDING_BOX 
-                        ? element.style.border.split(' ')[2] 
-                        : '#666666'
-                    }"
-                  ></div>
-                </template>
-                <v-list-item-title class="text-black">
-                  {{ element.type === ELEMENT_TYPES.BOUNDING_BOX ? `BB${index + 1}` : '文本' }}
-                </v-list-item-title>
-              </v-list-item>
-            </template>
-          </VueDraggableNext>
-          
-          <div v-if="drawElements.length === 0" class="no-results">
-            <div class="text-grey text-center pa-4">
-              双击画布添加标注框<br>或点击分析按钮自动生成
+            开始分析
+          </v-btn>
+
+          <div class="detection-list">
+            <!-- 检测结果列表 -->
+            <div 
+              v-for="(box, index) in drawElements" 
+              :key="box.id" 
+              class="box-list-item" 
+              :class="{ 'selected': selectedElementIndex === index }"
+              @click="selectElement(index)"
+            >
+              <div class="box-color-mark" :style="{ backgroundColor: box.type === ELEMENT_TYPES.BOUNDING_BOX ? '#42A5F5' : '#FF7043' }"></div>
+              <span>{{ box.content || `Box ${index + 1}` }}</span>
             </div>
           </div>
         </div>
@@ -302,6 +298,19 @@ import { VueDraggableNext } from 'vue-draggable-next'
 
 // 使用 glob 导入所有图片
 const imageModules = import.meta.glob('../assets/images/*.png', { eager: true })
+const handleImageLoad = (event) => {
+  // 获取图片实际尺寸
+  const img = event.target;
+  const canvas = canvasRef.value;
+  
+  // 更新画布包装器的高度以匹配图片
+  if (canvas && img && img.naturalHeight) {
+    // 使用图片的自然高度
+    const imgRatio = img.naturalHeight / img.naturalWidth;
+    const canvasWidth = canvas.offsetWidth;
+    canvas.style.height = `${canvasWidth * imgRatio}px`;
+  }
+};
 
 const images = ref(
   Object.entries(imageModules).map(([path, module], index) => ({
@@ -419,7 +428,27 @@ const PICTOGRAMS = [
   }
 ]
 
-const currentTextColor = ref(TEXT_COLORS[0].value);
+// 统一的文本样式状态
+const currentTextStyle = ref({
+  color: TEXT_COLORS[0].value,
+  fontSize: '16px',
+  fontWeight: 'normal'
+});
+
+// 统一的样式处理函数
+const handleStyleSelect = (property, value) => {
+  // 更新当前样式状态
+  currentTextStyle.value[property] = value;
+
+  // 如果有选中的文本元素，更新其样式
+  if (selectedElementIndex.value !== -1) {
+    const element = drawElements.value[selectedElementIndex.value];
+    if (element.type === ELEMENT_TYPES.TEXT) {
+      console.log(element.style);
+      element.style[property] = value;
+    }
+  }
+};
 
 // 处理画布双击
 const handleCanvasDoubleClick = (event) => {
@@ -537,26 +566,6 @@ const handlePictogramSelect = (pictogram) => {
   currentPictogram.value = pictogram;
 };
 
-// 更新文本颜色处理
-const handleColorSelect = (color) => {
-  if (selectedElementIndex.value !== -1) {
-    // 如果有选中的文本元素，更新其颜色
-    const element = drawElements.value[selectedElementIndex.value];
-    if (element.type === ELEMENT_TYPES.TEXT) {
-      element.style.color = color;
-    }
-  }
-  // 无论是否有选中元素，都更新当前文本颜色
-  currentTextColor.value = color;
-};
-
-// 更新文本内容
-const updateTextContent = (event, index) => {
-  const element = drawElements.value[index];
-  if (element.type === ELEMENT_TYPES.TEXT) {
-    element.content = event.target.innerText;
-  }
-};
 // 定义可能的样式配置
 const boxStyles = [
   {
@@ -878,8 +887,8 @@ const updateSelectedElementColor = (color) => {
 };
 
 // 监听颜色变化
-watch(currentTextColor, (newColor) => {
-  updateSelectedElementColor(newColor);
+watch(currentTextStyle, (newStyle) => {
+  updateSelectedElementColor(newStyle.color);
 });
 
 // 字体大小选项
@@ -895,29 +904,6 @@ const FONT_STYLES = [
   { label: 'Bold', value: 'bold' },
   { label: 'Italic', value: 'italic' }
 ];
-
-const currentFontSize = ref('16px');
-const currentFontStyle = ref('normal');
-
-// 更新文本样式
-const updateTextStyle = (property, value) => {
-  if (selectedElementIndex.value !== -1) {
-    const element = drawElements.value[selectedElementIndex.value];
-    if (element.type === ELEMENT_TYPES.TEXT) {
-      if (property === 'fontSize') {
-        element.style.fontSize = value;
-        currentFontSize.value = value;
-      } else if (property === 'fontStyle') {
-        element.style.fontStyle = value;
-        currentFontStyle.value = value;
-      }
-    }
-  } else {
-    // 如果没有选中元素，更新默认值
-    if (property === 'fontSize') currentFontSize.value = value;
-    if (property === 'fontStyle') currentFontStyle.value = value;
-  }
-};
 
 // 处理画布点击
 const handleCanvasClick = (event) => {
@@ -1044,7 +1030,6 @@ watch(drawElements, () => {
 // 创建新元素时添加图片ID
 const createTextElement = (x, y) => ({
   id: Date.now(),
-  imageId: currentImageId.value,
   type: ELEMENT_TYPES.TEXT,
   x,
   y,
@@ -1054,9 +1039,7 @@ const createTextElement = (x, y) => ({
   style: {
     border: getBoxStyle(ELEMENT_TYPES.TEXT).border,
     backgroundColor: getBoxStyle(ELEMENT_TYPES.TEXT).backgroundColor,
-    color: currentTextColor.value,
-    fontSize: currentFontSize.value,
-    fontStyle: currentFontStyle.value,
+    ...currentTextStyle.value  // 使用当前样式状态
   }
 });
 
@@ -1158,6 +1141,21 @@ const deleteElement = (index) => {
   // 保存更改到存储
   saveBoxesToStorage(currentImageId.value);
 };
+
+// 当选中元素变化时，更新当前样式状态
+watch(selectedElementIndex, (newIndex) => {
+  if (newIndex !== -1) {
+    const element = drawElements.value[newIndex];
+    if (element.type === ELEMENT_TYPES.TEXT) {
+      // 更新当前样式状态以匹配选中元素
+      currentTextStyle.value = {
+        color: element.style.color,
+        fontSize: element.style.fontSize,
+        fontWeight: element.style.fontWeight
+      };
+    }
+  }
+});
 
 </script>
 

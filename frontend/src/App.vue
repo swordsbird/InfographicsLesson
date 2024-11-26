@@ -1,7 +1,7 @@
 <template>
   <v-app>
     <!-- 顶部导航栏 -->
-    <v-app-bar color="white" elevation="0" border>
+    <v-app-bar color="dark" elevation="0" border>
       <v-container class="px-4" fluid>
         <v-row align="center" no-gutters>
           <!-- 左对齐标题 -->
