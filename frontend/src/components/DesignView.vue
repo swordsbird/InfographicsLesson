@@ -38,6 +38,7 @@
                   variant="outlined"
                   dense
                   color="primary"
+                  :class="{'switch-on': isViewMode, 'switch-off': !isViewMode}"
                 ></v-switch>
               </v-col>
         
@@ -104,39 +105,129 @@
           <div id="chartCanvas"></div>
           <!-- <canvas id="chartCanvas"></canvas> -->
           <v-btn @click="saveSvg" color="primary">保存SVG</v-btn>
+          <template v-for="(element, index) in drawElements" :key="element.id">
+            <!-- 元素内容 -->
+            <div 
+              class="draw-element"
+              :class="{
+                'selected': selectedElementId.value === element.id,
+                'text-element': element.type === ELEMENT_TYPES.TEXT,
+                'pictogram-element': element.type === ELEMENT_TYPES.PICTOGRAM
+              }"
+              :data-index="element.index"
+              :style="getElementStyle(element, selectedElementId.value)"
+            >
+              <!-- 标题栏 - 可拖动 -->
+              <!-- <div 
+                class="element-title"
+                v-if="elementsVisible"
+                :style="{ 'background-color': getBoxType(element.type, selectedElementId.value).labelBgColor }"
+                @mousedown="startTitleDrag($event, element.id)"
+              >
+                <span class="element-label">
+                  {{ element.id }}
+                </span>
+                <div class="delete-button" @click.stop="deleteElement(element)">
+                  <v-icon size="small" color="white">mdi-close</v-icon>
+                </div>
+              </div> -->
+              
+              <!-- 内容区域 -->
+              <div v-if="element.type === ELEMENT_TYPES.TEXT && isEditing && editingElementId === element.id"
+                class="text-content editing-text"
+                contenteditable="true"
+                @blur="saveTextEdit($event, element.id)"
+                @keydown.enter.prevent="saveTextEdit($event, element.id)"
+                :style="{
+                  color: element.style.color,
+                  fontSize: element.style.fontSize,
+                  fontWeight: element.style.fontWeight
+                }"
+                v-text="element.content"
+              ></div>
+              <div v-else-if="element.type === ELEMENT_TYPES.TEXT"
+                class="text-content"
+                @dblclick="handleTextDoubleClick($event, element.id)"
+                :style="{
+                  color: element.style.color,
+                  fontSize: element.style.fontSize,
+                  fontWeight: element.style.fontWeight
+                }"
+              >{{ element.content }}</div>
+              <div v-else-if="element.type === ELEMENT_TYPES.PICTOGRAM" 
+                class="pictogram-content" 
+                v-html="element.content">
+              </div>
+              
+            </div>
+
+            <!-- 独立的边框box -->
+            <div 
+              v-if="element.type === ELEMENT_TYPES.BOUNDING_BOX || elementsVisible"
+              class="element-box"
+              @dblclick="handleBBoxClick($event, element.id)"
+              @mouseout="handleBBoxMouseOut($event, element.id)"
+              @mousedown="startDrag($event, element.id, targetType)"
+              :id="element.id"
+              :class="{
+                'selected': selectedElementId === element.id,
+                'bounding-box': element.type === ELEMENT_TYPES.BOUNDING_BOX
+              }"
+              :style="getBoxStyle(element, selectedElementId)"
+            >
+            <div class="resize-handle" @mousedown.stop="startResize($event, element.id, targetType)"></div>
+          </div>
+            
+          </template>
         </div>
       </div>
 
       <!-- 右侧栏 - 20% -->
       <div class="right-sidebar">
-        <div class="scrollable-content">
+        <div class="upper-section">
           <v-container class="pa-4">
             <v-row dense>
-              <v-col cols="12" class="mb-2">
-                <v-btn
-                  block
-                  color="primary"
-                  variant="outlined"
-                >
-                  操作按钮 1
-                </v-btn>
-              </v-col>
-              <v-col cols="12" class="mb-2">
-                <v-btn
-                  block
-                  color="primary"
-                  variant="outlined"
-                >
-                  操作按钮 2
-                </v-btn>
-              </v-col>
-              <v-col v-for="n in 30" :key="n" cols="12" class="mb-2">
-                <v-card variant="outlined" class="pa-4">
-                  占位内容 {{ n }}
-                </v-card>
+              <v-col v-for="(path, index) in pictogramPaths" :key="index" cols="3" class="mb-2">
+                <v-img
+                  cover
+                  height="100"
+                  :src="path"
+                  @click="addImageToChart(path)"
+                ></v-img>
               </v-col>
             </v-row>
           </v-container>
+        </div>
+        <div class="lower-section">
+          <div class="scrollable-content">
+            <v-container class="pa-4">
+              <v-row dense>
+                <v-col cols="12" class="mb-2">
+                  <v-btn
+                    block
+                    color="primary"
+                    variant="outlined"
+                  >
+                    操作按钮 1
+                  </v-btn>
+                </v-col>
+                <v-col cols="12" class="mb-2">
+                  <v-btn
+                    block
+                    color="primary"
+                    variant="outlined"
+                  >
+                    操作按钮 2
+                  </v-btn>
+                </v-col>
+                <v-col v-for="n in 30" :key="n" cols="12" class="mb-2">
+                  <v-card variant="outlined" class="pa-4">
+                    占位内容 {{ n }}
+                  </v-card>
+                </v-col>
+              </v-row>
+            </v-container>
+          </div>
         </div>
       </div>
     </div>
@@ -150,6 +241,10 @@ import { ref, onMounted, computed } from 'vue';
 import * as d3 from 'd3'; // 导入 D3.js 的所有模块
 import BarChart from '../plugins/Barchart.js'; // 导入 BarChart 类
 import { watch } from 'vue';
+import { setDefaultStyles } from './utils/chartStyles';
+import { createBaseElement, createTextElement, createPictogramElement, 
+  createBoundingBox, ELEMENT_TYPES, SHORT_ELEMENT_TYPES, getElementStyle,
+  getBoxStyle, getBoxType} from './utils/elements';
 
 // 选择器相关数据
 const jsonFiles = ref([]); // JSON 文件列表
@@ -158,17 +253,37 @@ const chartTypes = ref(['Bar', 'Pie', 'Line', 'Scatter Plot']); // 图表类型�
 const selectedChartType = ref(''); // 用户选中的图���类型
 const chartData = ref(null); // 用于存储加载的 JSON 数据
 const svgFiles = ref([]); // SVG 文件列表
+const isResizing = ref(false);
+const isDragging = ref(false);
+const canvasRef = ref(null);
 const isViewMode = ref(true); // 交互模式切换
-
+const drawElements = ref([]);
+const selectedElementId = ref(null);
+const selectedElement = computed(() => drawElements.value.find(el => el.id === selectedElementId.value));
+const fixedElementIdList = ref([]);
+const elementsVisible = ref(true);
+const dragOffset = ref({ x: 0, y: 0 });
+const dragInit = ref({ x: 0, y: 0 });
+const dragInitTransform = ref(null);
 // 生成按钮是否可用
 const canGenerateChart = computed(() => selectedJsonFile.value && selectedChartType.value);
+const pictogramPaths = ref([]);
+const currentImageId = ref(null);
+const ImageIdList = ref([]);
+const targetType = ref('element');
 
-// 动态加载 public/json 文件夹下的所有 JSON 文件
+
+// 动态加载 public/json 文件夹下的����有 JSON 文件
 onMounted(() => {
+  canvasRef.value = document.getElementById('chartCanvas');
   const files = import.meta.glob('/public/json/*.json'); // 匹配 public/json 文件夹中的 JSON 文件
   jsonFiles.value = Object.keys(files).map(filePath => filePath.replace('/public/json/', ''));
   const svgFilesGlob = import.meta.glob('/public/svg/*.svg'); // 匹配 public/svg 文件夹中的 SVG 文件
   svgFiles.value = Object.keys(svgFilesGlob).map(filePath => filePath.replace('/public/svg/', ''));
+  
+  const pictogramsGlobal = import.meta.glob('/public/pictogram/*.png');
+  pictogramPaths.value = Object.keys(pictogramsGlobal).map(filePath => filePath.replace('/public/', ''));
+  console.log("pictogramPaths", pictogramPaths);
   addHoverEffect();
 });
 
@@ -331,360 +446,6 @@ const saveSvg = async () => {
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
 }
-const setDefaultStyles = (meta_data, data, input_styles) => {
-  if (input_styles === undefined) {
-    input_styles = {};
-  }
-  if (meta_data.x_type === 'categorical' && data[0].x_data_icon === undefined) {return;}
-  let styles = {};
-  let defaultTextStyles = {
-      textColor: 'black',
-      textSize: "12px",
-      textAlign: 'start',
-      textFont: 'Arial',
-  };
-  let defaultStrokeStyles = {
-      strokeColor: 'black',
-      strokeWidth: 1,
-  };
-  let defaultFillStyles = {
-      fillColor: 'steelblue',
-  };
-
-  let defaultAttachStyles = {
-      attachMethod : 'unit', // attach, unit, multiple, or none
-      attachSide : 'outer', // outer, inner
-      attachRelativePos : 'end', // start, middle, end
-      attachSizeRatio : 0.8,
-  };
-  let defaultAnnotateStyles = {
-      attachMethod : "attach", // attach, unit, multiple, or none
-      attachSide : 'inner', // outer, inner
-      attachRelativePos : 'middle', // start, middle, end
-      attachSizeRatio : 0.75,
-      stackAttach: 'max',
-  };
-
-  let defaultTitleTextStyles = {
-      textColor: 'darkblue',
-      textSize: "20px",
-      textAlign: 'start',
-      textFont: 'Trebuchet MS',
-  };
-  let defaultCaptionTextStyles = {
-      textColor: 'darkslategray',
-      textSize: "12px",
-      textAlign: 'start',
-      textFont: 'Verdana',
-  };
-
-  let defaultIconStyles = {
-      layout: "top", // top, bottom, left, right
-      align: "left", // top, bottom, middle, left, right
-      sizeRatio: 0.75,
-  };
-
-  let axisTextStyles = defaultTextStyles;
-  let axisStrokeStyles = defaultStrokeStyles;
-  let axisFillStyles = defaultFillStyles;
-  let axisAttachStyles = defaultAttachStyles;
-
-  let titleTextStyles = defaultTitleTextStyles;
-  let titleStrokeStyles = defaultStrokeStyles;
-  let titleFillStyles = defaultFillStyles;
-  let titleIconStyles = {...defaultIconStyles};
-
-  let captionTextStyles = defaultCaptionTextStyles;
-  let captionStrokeStyles = defaultStrokeStyles;
-  let captionFillStyles = defaultFillStyles;
-
-  let topicIconTextStyles = defaultTextStyles;
-  let topicIconStrokeStyles = defaultStrokeStyles;
-  let topicIconFillStyles = defaultFillStyles;
-  let topicIconIconStyles = {...defaultIconStyles};
-
-  let markStrokeStyles = defaultStrokeStyles;
-  let markFillStyles = defaultFillStyles;
-  let markTextStyles = defaultTextStyles;
-  let markAttachStyles = defaultAttachStyles;
-  let markAnnotateStyles = defaultAnnotateStyles;
-
-
-  let attachStyles = defaultAttachStyles;
-  if (input_styles.attachStyles !== undefined) {
-      for (const key in input_styles.attachStyles) {
-          attachStyles[key] = input_styles.attachStyles[key];
-      }
-  }
-  const inputAxisStyles = input_styles.axisStyles;
-  if (inputAxisStyles !== undefined) {
-      if (inputAxisStyles.textStyles !== undefined) {
-          for (const key in inputAxisStyles.textStyles) {
-              axisTextStyles[key] = inputAxisStyles.textStyles[key];
-          }
-      }
-      if (inputAxisStyles.strokeStyles !== undefined) {
-          for (const key in inputAxisStyles.strokeStyles) {
-              axisStrokeStyles[key] = inputAxisStyles.strokeStyles[key];
-          }
-      }
-      if (inputAxisStyles.fillStyles !== undefined) {
-          for (const key in inputAxisStyles.fillStyles) {
-              axisFillStyles[key] = inputAxisStyles.fillStyles[key];
-          }
-      }
-  }
-
-  const inputTitleStyles = input_styles.titleStyles;
-  if (inputTitleStyles !== undefined) {
-      if (inputTitleStyles.textStyles !== undefined) {
-          for (const key in inputTitleStyles.textStyles) {
-              titleTextStyles[key] = inputTitleStyles.textStyles[key];
-          }
-      }
-      if (inputTitleStyles.strokeStyles !== undefined) {
-          for (const key in inputTitleStyles.strokeStyles) {
-              titleStrokeStyles[key] = inputTitleStyles.strokeStyles[key];
-          }
-      }
-      if (inputTitleStyles.fillStyles !== undefined) {
-          for (const key in inputTitleStyles.fillStyles) {
-              titleFillStyles[key] = inputTitleStyles.fillStyles[key];
-          }
-      }
-      if (inputTitleStyles.iconStyles !== undefined) {
-          for (const key in inputTitleStyles.iconStyles) {
-              titleIconStyles[key] = inputTitleStyles.iconStyles[key];
-          }
-      }
-  }
-  const inputCaptionStyles = input_styles.captionStyles;
-  if (inputCaptionStyles !== undefined) {
-      if (inputCaptionStyles.textStyles !== undefined) {
-          for (const key in inputCaptionStyles.textStyles) {
-              captionTextStyles[key] = inputCaptionStyles.textStyles[key];
-          }
-      }
-      if (inputCaptionStyles.strokeStyles !== undefined) {
-          for (const key in inputCaptionStyles.strokeStyles) {
-              captionStrokeStyles[key] = inputCaptionStyles.strokeStyles[key];
-          }
-      }
-      if (inputCaptionStyles.fillStyles !== undefined) {
-          for (const key in inputCaptionStyles.fillStyles) {
-              captionFillStyles[key] = inputCaptionStyles.fillStyles[key];
-          }
-      }
-  }
-
-  const inputTopicIconStyles = input_styles.topicIconStyles;
-  if (inputTopicIconStyles !== undefined) {
-      if (inputTopicIconStyles.textStyles !== undefined) {
-          for (const key in inputTopicIconStyles.textStyles) {
-              topicIconTextStyles[key] = inputTopicIconStyles.textStyles[key];
-          }
-      }
-      if (inputTopicIconStyles.strokeStyles !== undefined) {
-          for (const key in inputTopicIconStyles.strokeStyles) {
-              topicIconStrokeStyles[key] = inputTopicIconStyles.strokeStyles[key];
-          }
-      }
-      if (inputTopicIconStyles.fillStyles !== undefined) {
-          for (const key in inputTopicIconStyles.fillStyles) {
-              topicIconFillStyles[key] = inputTopicIconStyles.fillStyles[key];
-          }
-      }
-      if (inputTopicIconStyles.iconStyles !== undefined) {
-          for (const key in inputTopicIconStyles.iconStyles) {
-              topicIconIconStyles[key] = inputTopicIconStyles.iconStyles[key];
-          }
-      }
-  }
-
-  const inputMarkStyles = input_styles.markStyles;
-  if (inputMarkStyles !== undefined) {
-      if (inputMarkStyles.textStyles !== undefined) {
-          for (const key in inputMarkStyles.textStyles) {
-              markTextStyles[key] = inputMarkStyles.textStyles[key];
-          }
-      }
-      if (inputMarkStyles.strokeStyles !== undefined) {
-          for (const key in inputMarkStyles.strokeStyles) {
-              markStrokeStyles[key] = inputMarkStyles.strokeStyles[key];
-          }
-      }
-      if (inputMarkStyles.fillStyles !== undefined) {
-          for (const key in inputMarkStyles.fillStyles) {
-              markFillStyles[key] = inputMarkStyles.fillStyles[key];
-          }
-      }
-  }
-
-
-  // axis styles
-  let x_axis_styles = {
-      // generic styles
-      textStyles: axisTextStyles,
-      strokeStyles: axisStrokeStyles,
-      fillStyles: axisFillStyles,
-      attachStyles: axisAttachStyles,
-      
-      // specific styles
-      angle: 0,
-      tickFace : 'clw',
-      textFace : 'clw',
-      tickInnerLength : 5,
-      tickOuterLength : 0,
-      tickNumber : 3,
-
-      titleFace : 'clw',
-      titleTextOrient : 'horizontal',
-      titleAlign : 'middle',
-      titleRelativePos : 'middle',
-  };
-
-  let y_axis_styles = {
-      // generic styles
-      textStyles: axisTextStyles,
-      strokeStyles: axisStrokeStyles,
-      fillStyles: axisFillStyles,
-      
-      // specific styles
-      angle: 90,
-      tickFace : 'cclw',
-      textFace : 'cclw',
-      tickInnerLength : 5,
-      tickOuterLength : 0,
-      tickNumber : 3,
-
-      titleFace : 'cclw',
-      titleTextOrient : 'horizontal',
-      titleAlign : 'middle',
-      titleRelativePos : 'middle',
-  };
-  if (input_styles.x_axis_styles !== undefined) {
-      if (input_styles.x_axis_styles.angle !== undefined) {
-          x_axis_styles.angle = input_styles.x_axis_styles.angle;
-      }
-  }
-  if (input_styles.y_axis_styles !== undefined) {
-      if (input_styles.y_axis_styles.angle !== undefined) {
-          y_axis_styles.angle = input_styles.y_axis_styles.angle;
-      }
-  }
-
-  
-  const faceConfig = {
-      '0,90': { x: 'clw', y: 'cclw' },
-      '0,-90': { x: 'cclw', y: 'clw' },
-      '90,0': { x: 'cclw', y: 'clw' },
-      '90,180': { x: 'clw', y: 'cclw' },
-      '-90,0': { x: 'clw', y: 'cclw' },
-      '-90,180': { x: 'cclw', y: 'clw' },
-      '180,90': { x: 'cclw', y: 'clw' },
-      '180,-90': { x: 'clw', y: 'cclw' }
-  };
-  const config = faceConfig[`${x_axis_styles.angle},${y_axis_styles.angle}`];
-  
-  let mark_styles = {
-      textStyles: markTextStyles,
-      strokeStyles: markStrokeStyles,
-      fillStyles: markFillStyles,
-      attachStyles: markAttachStyles,
-      annotateStyles: markAnnotateStyles,
-  };
-
-  let title_styles = {
-      textStyles: titleTextStyles,
-      strokeStyles: titleStrokeStyles,
-      fillStyles: titleFillStyles,
-      iconStyles: titleIconStyles
-  };
-  let caption_styles = {
-      textStyles: captionTextStyles,
-      strokeStyles: captionStrokeStyles,
-      fillStyles: captionFillStyles
-  };
-
-  let topic_icon_styles = {
-      textStyles: topicIconTextStyles,
-      strokeStyles: topicIconStrokeStyles,
-      fillStyles: topicIconFillStyles,
-      iconStyles: topicIconIconStyles
-  };
-
-  
-  if (config) {
-      x_axis_styles.tickFace = config.x;
-      x_axis_styles.textFace = config.x;
-      x_axis_styles.titleFace = config.x;
-  
-      y_axis_styles.tickFace = config.y;
-      y_axis_styles.textFace = config.y;
-      y_axis_styles.titleFace = config.y;
-  }
-  if (input_styles.x_axis_styles !== undefined) {
-      for (const key in input_styles.x_axis_styles) {
-          x_axis_styles[key] = input_styles.x_axis_styles[key];
-      }
-  }
-  if (input_styles.y_axis_styles !== undefined) {
-      for (const key in input_styles.y_axis_styles) {
-          y_axis_styles[key] = input_styles.y_axis_styles[key];
-      }
-  }
-
-  var piechart_styles ={
-      totalAngle: Math.PI*2,
-      startAngle: 0,
-      innerRadius: 50,
-      outerRadius: 200,
-      marginAngle: Math.PI*2/72
-  }
-
-  styles = {
-      x_axis_styles: x_axis_styles,
-      y_axis_styles: y_axis_styles,
-      mark_styles: mark_styles,
-      attachStyles: attachStyles,
-
-      titleStyles: title_styles,
-      captionStyles: caption_styles,
-      topicIconStyles: topic_icon_styles,
-      annotation_styles: [],
-
-      annotate_data: false,
-
-      piechart_styles: piechart_styles
-  };
-
-  // console.log("input_styles", input_styles);
-  if (input_styles.show_legend !== undefined) {
-    styles.show_legend = input_styles.show_legend;
-  }
-  if (input_styles.annotate_data !== undefined) {
-    styles.annotate_data = input_styles.annotate_data;
-  }
-
-  var scale_factor = 1;
-  var numberData = data.length;
-  console.log('data',data);
-  console.log(numberData);
-  // numberData (3,10) ~ scale_factor (1, 2) with 0.1 random noise
-
-  scale_factor = (numberData-3)/7 + 1 + (Math.random()*0.1-0.05);
-  var height = 600;
-  var width = 600;
-  console.log(scale_factor)
-  if (styles.y_axis_styles.angle===0 || styles.y_axis_styles.angle===180){
-    height = 600*scale_factor;
-  }
-  else {
-    width = 600*scale_factor;
-  }
-  console.log(height, width);
-  return [meta_data, data, styles, width, height];
-}
 
 const loadSvg = async (svgFile) => {
   try {
@@ -710,7 +471,6 @@ const clearInteractions = () => {
 
 const addHoverEffect = () => {
   clearInteractions(); // 清除所有交互功��
-  if (!isViewMode.value) return; // 如果不是查看模式，直接返回
   const addEffect = (elementId, titleId, hoverColor, modifyFill = true) => {
     const element = d3.select(`#${elementId}`);
     const title = d3.select(`#${titleId}`);
@@ -729,6 +489,7 @@ const addHoverEffect = () => {
     if (titleId) setOriginalAttributes(title);
 
     const onMouseOver = () => {
+      if (isResizing.value) return;
       element.selectAll('*').attr('stroke', hoverColor);
       if (modifyFill) {
         element.selectAll('*').attr('fill', hoverColor);
@@ -739,6 +500,7 @@ const addHoverEffect = () => {
     };
 
     const onMouseOut = () => {
+      if (isResizing.value) return;
       element.selectAll('*').attr('stroke', function() { return d3.select(this).attr('original-stroke'); });
       if (modifyFill) {
         element.selectAll('*').attr('fill', function() { return d3.select(this).attr('original-fill'); });
@@ -752,10 +514,78 @@ const addHoverEffect = () => {
     if (titleId) title.on('mouseover', onMouseOver).on('mouseout', onMouseOut);
   };
 
-  addEffect('x-axis', 'titlex-axis', 'red');
-  addEffect('y-axis', 'titley-axis', 'red');
-  addEffect('background', null, 'red');
-  addEffect('marks', null, 'red', false); // 为 marks 添加 hover 效果，只修改 stroke
+  const addBoundingBoxEffect = (elementId, titleId) => {
+    const element = d3.select(`#${elementId}`);
+    const title = d3.select(`#${titleId}`);
+    let boundingBoxId = null;
+  
+    const onMouseOver = () => {
+      if (isResizing.value) return;
+      const elementIndex = drawElements.value.length;
+      let boundingBox;
+      if (titleId) {
+        const bbox = element.node().getBoundingClientRect();
+        const titleBbox = title.node().getBoundingClientRect();
+        const x1 = Math.min(bbox.x, titleBbox.x);
+        const y1 = Math.min(bbox.y, titleBbox.y);
+        const x2 = Math.max(bbox.x + bbox.width, titleBbox.x + titleBbox.width);
+        const y2 = Math.max(bbox.y + bbox.height, titleBbox.y + titleBbox.height);
+        const width = x2 - x1;
+        const height = y2 - y1;
+        boundingBox = [x1, y1, width, height];
+      } else {
+        const bbox = element.node().getBoundingClientRect();
+        boundingBox = [bbox.x, bbox.y, bbox.width, bbox.height];
+      }
+      let newElement = createBoundingBox({
+        x: boundingBox[0],
+        y: boundingBox[1],
+        width: boundingBox[2],
+        height: boundingBox[3],
+        index: elementIndex,
+      });
+      selectedElementId.value = newElement.id;
+      boundingBoxId = newElement.id;
+      drawElements.value.push(newElement);
+      targetType.value = 'element';
+    };
+  
+    const onMouseOut = (event) => {
+      // if (isResizing.value) return;
+      // if (boundingBoxId !== null) {
+      //   const boundingBox = drawElements.value.find(el => el.id === boundingBoxId);
+      //   if (boundingBox) {
+      //     const bbox = boundingBox.$el.getBoundingClientRect();
+      //     if (
+      //       event.clientX < bbox.left ||
+      //       event.clientX > bbox.right ||
+      //       event.clientY < bbox.top ||
+      //       event.clientY > bbox.bottom
+      //     ) {
+      //       drawElements.value = drawElements.value.filter(el => el.id !== boundingBoxId);
+      //       boundingBoxId = null;
+      //     }
+      //   }
+      // }
+    };
+  
+    element.on('mouseover', onMouseOver).on('mouseout', onMouseOut);
+    if (titleId) title.on('mouseover', onMouseOver).on('mouseout', onMouseOut);
+  };
+
+  if (isViewMode.value){
+    addEffect('x-axis', 'titlex-axis', 'red');
+    addEffect('y-axis', 'titley-axis', 'red');
+    addEffect('background', null, 'red');
+    addEffect('marks', null, 'red', false); // 为 marks 添加 hover 效果，只修改 stroke
+  }
+  else {
+    // addBoundingBoxEffect('x-axis', 'titlex-axis');
+    // addBoundingBoxEffect('y-axis', 'titley-axis');
+    // addBoundingBoxEffect('background', null);
+    // addBoundingBoxEffect('marks', null);
+    addBoundingBoxEffect('chart', null);
+  }
 };
 
 onMounted(() => {
@@ -769,123 +599,254 @@ onMounted(() => {
 watch(isViewMode, () => {
   addHoverEffect();
 });
+
+const handleBBoxMouseOut = (event, id) => {
+  console.log("mouse out");
+  if (!fixedElementIdList.value.includes(id)) {
+    drawElements.value = drawElements.value.filter(el => el.id !== id);
+  }
+};
+const handleBBoxClick = (event, id) => {
+  console.log("handleBBoxClick", id);
+  if (fixedElementIdList.value.includes(id)) {
+    fixedElementIdList.value = fixedElementIdList.value.filter(el => el !== id);
+  } else {
+    fixedElementIdList.value.push(id);
+  }
+};
+
+// 开始调整大小
+const startResize = (event, id, targetType = 'element') => {
+  event.preventDefault();
+  event.stopPropagation();
+  console.log("startResize targetType", targetType);
+  
+  isResizing.value = true;
+  selectedElementId.value = id;
+  
+  const element = drawElements.value.find(el => el.id === id);
+  const startX = event.clientX;
+  const startY = event.clientY;
+  const startWidth = element.width;
+  const startHeight = element.height;
+  const aspectRatio = startWidth / startHeight;
+  const targetElement = targetType === 'image' ? document.getElementById(currentImageId.value) : document.getElementById('chart');
+  console.log("targetElement", targetElement);
+  let targetBBox;
+  targetBBox = targetElement.getBoundingClientRect();
+  const canvasElement = document.getElementById('chartCanvas');
+  const canvasBBox = canvasElement.getBoundingClientRect();
+  targetBBox.x = targetBBox.x - canvasBBox.x;
+  targetBBox.y = targetBBox.y - canvasBBox.y;
+  
+  // if (targetType === 'image') {
+  //   // targetBBox = {x:element.x, y:element.y, width:element.width, height:element.height};
+  //   targetBBox = targetElement.getBoundingClientRect();
+  // } else {
+  //   const targetParentElement = targetElement.parentElement;
+  //   targetBBox = targetParentElement.
+  // }
+  // const targetParentElement = targetElement.parentElement;
+  //  = targetParentElement.getBBox();
+  console.log("targetBBox", targetBBox);
+  const targetX = targetBBox.x;
+  const targetY = targetBBox.y;
+  const targetWidth = targetBBox.width;
+  const targetHeight = targetBBox.height;
+  let transform = targetElement.getAttribute('transform');
+  if (!transform) {
+    transform = '';
+  }
+
+  const handleResize = (e) => {
+    if (!isResizing.value) return;
+    
+    const dx = e.clientX - startX;
+    const dy = e.clientY - startY;
+    
+    let newWidth = Math.max(50, startWidth + dx);  // 最小宽度 50px
+    let newHeight = Math.max(50, startHeight + dy); // 最小高度 50px
+
+    // 保持长宽比
+    if (newWidth / newHeight > aspectRatio) {
+      newWidth = newHeight * aspectRatio;
+    } else {
+      newHeight = newWidth / aspectRatio;
+    }
+    console.log("newWidth, newHeight", newWidth, newHeight);
+
+    canvasRef.value = document.getElementById('chartCanvas');
+    // 获取画布边界
+    const canvasRect = canvasRef.value.getBoundingClientRect();
+    
+    // 确保不超出画布
+    const maxWidth = canvasRect.left + canvasRect.width - element.x;
+    const maxHeight = canvasRect.top + canvasRect.height - element.y;
+    
+    element.width = Math.min(newWidth, maxWidth);
+    element.height = Math.min(newHeight, maxHeight);
+
+    const scaleX = element.width / targetWidth;
+    const scaleY = element.height / targetHeight;
+    const newScale = `scale(${scaleX}, ${scaleY})`;
+    const scaledX = targetX * scaleX;
+    const scaledY = targetY * scaleY;
+    // console.log('targetX, targetY, scaledX, scaledY', targetX, targetY, scaledX, scaledY);
+    const newTranslate = `translate(${targetX - scaledX}, ${targetY - scaledY})`;
+    console.log("newTranslate", newTranslate);
+    if (transform === '') {
+      targetElement.setAttribute('transform', `${newTranslate}, ${newScale}`);
+      // targetElement.setAttribute('transform', `${newScale}`);
+    }
+    else {
+      targetElement.setAttribute('transform', `${newTranslate}, ${newScale}, ${transform}`);
+    }
+  };
+  
+  const stopResize = () => {
+    isResizing.value = false;
+    document.removeEventListener('mousemove', handleResize);
+    document.removeEventListener('mouseup', stopResize);
+  };
+  
+  document.addEventListener('mousemove', handleResize);
+  document.addEventListener('mouseup', stopResize);
+};
+
+const startDrag = (event, id, targetType = 'element') => {
+  event.preventDefault();
+  event.stopPropagation();
+  
+  isDragging.value = true;
+  selectedElementId.value = id;
+  
+  const element = drawElements.value.find(el => el.id === id);
+  dragOffset.value = {
+    x: event.clientX - element.x,
+    y: event.clientY - element.y
+  };
+  dragInit.value = {
+    x: event.clientX,
+    y: event.clientY
+  };
+
+  const targetElement = targetType === 'image' ? document.getElementById(currentImageId.value) : document.getElementById('chart');
+  dragInitTransform.value = targetElement.getAttribute('transform');
+  document.addEventListener('mousemove', (e) => handleDrag(e, targetType));
+  document.addEventListener('mouseup', stopDrag);
+};
+
+const handleDrag = (event, targetType) => {
+  if (!isDragging.value) return;
+
+  const id = selectedElementId.value;
+  if (id === null) return;
+  
+  const element = drawElements.value.find(el => el.id === id);
+  const newX = event.clientX - dragOffset.value.x;
+  const newY = event.clientY - dragOffset.value.y;
+  
+  // 获取画布边界
+  const canvas = canvasRef.value;
+  const canvasRect = canvas.getBoundingClientRect();
+
+  // 获取目标元素大小
+  console.log("targetType", targetType);
+  const targetElement = targetType === 'image' ? document.getElementById(currentImageId.value) : document.getElementById('chart');
+  const targetBBox = targetElement.getBoundingClientRect();
+  const targetWidth = targetBBox.width;
+  const targetHeight = targetBBox.height;
+  
+  // 确保元素不会拖出画布
+  const maxX = canvasRect.left + canvasRect.width - element.width;
+  const maxY = canvasRect.top + canvasRect.height - element.height;
+  const minX = canvasRect.left;
+  const minY = canvasRect.top;
+  element.x = Math.max(minX, Math.min(newX, maxX));
+  element.y = Math.max(minY, Math.min(newY, maxY));
+
+  const elementInitX = dragInit.value.x - dragOffset.value.x;
+  const elementInitY = dragInit.value.y - dragOffset.value.y;
+
+  const translateX = element.x - elementInitX;
+  const translateY = element.y - elementInitY;
+  const newTranslate = `translate(${translateX}, ${translateY})`;
+  if (!dragInitTransform.value){
+    targetElement.setAttribute('transform', newTranslate);
+  }
+  else {
+    targetElement.setAttribute('transform', `${newTranslate}, ${dragInitTransform.value}`);
+  }
+};
+
+const stopDrag = (event) => {
+  document.removeEventListener('mousemove', handleDrag);
+  document.removeEventListener('mouseup', stopDrag);
+  
+  isDragging.value = false;
+};
+
+const addImageToChart = (path) => {
+  const svg = d3.select('#chartCanvas svg');
+  const imageId = `image-${drawElements.value.length}`;
+  const image = svg.append('image')
+    .attr('id', imageId)
+    .attr('x', 50) // 初始位置，可根据需要调整
+    .attr('y', 50) // 初始位置，可根据需要调整
+    .attr('width', 100) // 初始宽度，可根据需要调整
+    .attr('height', 100) // 初始高度，可根据需要调整
+    .attr('href', path)
+    .attr('opacity', 0.1);
+  
+    
+  image.transition()
+    .duration(500)
+    .attr('opacity', 1);
+  
+  image.on('mouseover', () => {
+    targetType.value = 'image';
+    const imageBBox = image.node().getBoundingClientRect();
+    if (!isDragging.value && !isResizing.value) {
+      const boundingBox = createBoundingBox({
+        x: imageBBox.x,
+        y: imageBBox.y,
+        width: imageBBox.width,
+        height: imageBBox.height,
+        index: drawElements.value.length,
+      });
+      drawElements.value.push(boundingBox);
+      selectedElementId.value = boundingBox.id;
+      currentImageId.value = imageId;
+    }
+  });
+
+  // image.on('mousedown', (event) => startDrag(event, boundingBox.id, 'image'));
+};
+
+
 </script>
 
 
+<style scoped src="./design.css">
+
+</style>
+
 <style scoped>
-
-.content-wrapper {
-  display: flex;
-  height: 100%;
-  width: 100%;
-}
-
-.left-sidebar {
-  width: 20%;
-  border-right: 1px solid rgba(0, 0, 0, 0.12);
-  display: flex;
-  flex-direction: column;
-}
-
-.control-panel {
-  flex-shrink: 0; /* 固定高度 */
-  padding: 8px;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.12);
-  background-color: #f9f9f9;
-}
-
-.search-and-images {
-  flex-grow: 1; /* 占据剩余空间 */
-  display: flex;
-  flex-direction: column;
-}
-
-.search-container {
-  flex-shrink: 0; /* 固定高度 */
-}
-
-.scrollable-content {
-  flex-grow: 1; /* 滚动区域占据剩余空间 */
-  overflow-y: auto;
-  overflow-x: hidden;
-}
-
 .right-sidebar {
   width: 20%;
+  display: flex;
+  flex-direction: column;
   border-left: 1px solid rgba(0, 0, 0, 0.12);
 }
 
-.search-container {
+.upper-section {
   flex-shrink: 0;
-}
-
-.scrollable-content {
-  height: 100%;
+  height: 50%;
   overflow-y: auto;
-  overflow-x: hidden;
 }
 
-.canvas-container {
-  width: 60%;
-  height: 100%;
-  background-color: #f5f5f5;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 20px;
+.lower-section {
+  flex-grow: 1;
+  overflow-y: auto;
 }
-
-.canvas-wrapper {
-  width: 100%;
-  height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background-color: white;
-  border: 1px solid rgba(0, 0, 0, 0.12);
-  border-radius: 8px;
-  flex-direction: column;
-  align-items: center;
-}
-
-#chartCanvas {
-  width: 100%;
-  height: 100%;
-}
-
-.canvas-image {
-  max-width: 100%;
-  max-height: 100%;
-  object-fit: contain;
-}
-
-.image-card {
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.image-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-}
-
-/* 自定义滚动条样式 */
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-
-::-webkit-scrollbar-track {
-  background: #ffffff;
-}
-
-::-webkit-scrollbar-thumb {
-  background: rgba(0, 0, 0, 0.2);
-  border-radius: 4px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: rgba(0, 0, 0, 0.3);
-}
-
 </style>

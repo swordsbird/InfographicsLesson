@@ -410,7 +410,7 @@
     cursor: move;
     position: absolute;
     top: -26px;
-    left: -2px;
+    left: 0px;
     z-index: 1;
   }
   

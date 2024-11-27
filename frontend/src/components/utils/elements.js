@@ -171,4 +171,86 @@ const createBaseElement = ({
   })
 });
 
-export { createBaseElement, createTextElement, createPictogramElement, createBoundingBox, ELEMENT_TYPES, SHORT_ELEMENT_TYPES };
+// 添加新的 getBoxStyle 函数
+const getBoxStyle = (element, selectedElementId) => {
+  const elementId = element.id;
+  const isSelected = selectedElementId.value === elementId;
+  const boxStyle = getBoxType(element.type);
+  
+  return {
+    left: `${element.x}px`,
+    top: `${element.y}px`,
+    width: `${element.width}px`,
+    height: `${element.height}px`,
+    border: isSelected 
+      ? `4px solid ${boxStyle.border.split(' ')[2]}`
+      : boxStyle.border,
+    backgroundColor: isSelected
+      ? boxStyle.backgroundColor.replace('0.1', '0.4')
+      : boxStyle.backgroundColor,
+    // pointerEvents: 'none', // 确保box不会干扰元素的交互
+    position: 'absolute',
+  };
+}
+
+// 定义可能的样式配置
+const boxStyles = [
+  {
+    // 蓝色框 - boundingbox
+    border: '2px solid #1E88E5',
+    backgroundColor: 'rgba(30, 136, 229, 0.1)',
+    labelColor: '#FFFFFF',
+    labelBgColor: '#1E88E5',
+  },
+  {
+    // 橙色框 - textbox
+    border: '2px solid #F4511E',
+    backgroundColor: 'rgba(244, 81, 30, 0.1)', 
+    labelColor: '#FFFFFF',
+    labelBgColor: '#F4511E',
+  },
+  {
+    // 绿色框 - pictogrambox
+    border: '2px solid #43A047',
+    backgroundColor: 'rgba(67, 160, 71, 0.1)',
+    labelColor: '#FFFFFF', 
+    labelBgColor: '#43A047',
+  },
+  {
+    // 黄色框 - other box
+    border: '2px solid #FDD835',
+    backgroundColor: 'rgba(253, 216, 53, 0.1)',
+    labelColor: '#000000',
+    labelBgColor: '#FDD835',
+  }
+];
+
+const getBoxType = (type) => {
+  if (type === ELEMENT_TYPES.BOUNDING_BOX) {
+    return boxStyles[0];
+  } else if (type === ELEMENT_TYPES.TEXT) {
+    return boxStyles[1];
+  } else if (type === ELEMENT_TYPES.PICTOGRAM) {
+    return boxStyles[2];
+  } else if (type === ELEMENT_TYPES.OTHER) {
+    return boxStyles[3];
+  }
+  return boxStyles[0];
+};
+
+// 获取元素样式
+const getElementStyle = (element, selectedElementId) => {
+  const elementId = element.id;
+  // console.log("selectedElementId", selectedElementId);
+  // const isSelected = selectedElementId.value === elementId;
+  
+  // 基础样式，移除边框和背景相关样式
+  return {
+    left: `${element.x}px`,
+    top: `${element.y}px`,
+    width: `${element.width}px`,
+    height: `${element.height}px`,
+  };
+};
+
+export { createBaseElement, createTextElement, createPictogramElement, createBoundingBox, ELEMENT_TYPES, SHORT_ELEMENT_TYPES, getShortId, getBoxStyle, getBoxType , getElementStyle };

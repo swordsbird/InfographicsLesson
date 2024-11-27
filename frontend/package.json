@@ -12,6 +12,7 @@
     "@mdi/font": "7.4.47",
     "d3": "^7.9.0",
     "d3-node": "^4.0.1",
+    "pako": "^2.1.0",
     "roboto-fontface": "*",
     "sharp": "^0.33.5",
     "text-to-svg": "^3.1.5",

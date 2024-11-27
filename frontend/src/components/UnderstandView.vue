@@ -87,6 +87,7 @@
           <v-img
             :src="selectedImage"
             cover
+            ref="canvasImage"
             class="canvas-image"
             :draggable="false"
             @load="handleImageLoad"
@@ -318,7 +319,7 @@ import { ref, onMounted, onUnmounted, onBeforeUnmount, watch, nextTick, computed
 import { VueDraggableNext } from 'vue-draggable-next'
 import { analyzeWithOpenAI, defaultQueryPrompt } from './utils/llm';
 import { createBaseElement, createTextElement, createPictogramElement, createBoundingBox, ELEMENT_TYPES, SHORT_ELEMENT_TYPES } from './utils/elements';
-
+import { SEGMENT_API, SEGMENT_BOX_API } from './utils/OPENAI_API';
 // 使用 glob 导入所有图片
 const imageModules = import.meta.glob('../assets/images/*.png', { eager: true })
 const handleImageLoad = (event) => {
@@ -377,6 +378,7 @@ const handleFileUpload = (event) => {
 
 // 统一管理所有的 ref
 const canvasRef = ref(null);
+const canvasImage = ref(null);
 const drawElements = ref([]);
 const selectedElementId = ref(null);
 const selectedElement = computed(() => drawElements.value.find(el => el.id === selectedElementId.value));
@@ -727,31 +729,136 @@ const startResize = (event, id) => {
   document.addEventListener('mouseup', stopResize);
 };
 
-// 修改分析函数
+// TODO
 const analyzeImage = async () => {
   if (!selectedImage.value) {
     alert('请先选择一张图片');
     return;
   }
 
+  // 获取图片元素
+  const imageElement = canvasImage.value?.$el?.querySelector('img');
+  if (!imageElement) {
+    alert('无法获取图片元素');
+    queryImageStatus.value = false;
+    return;
+  }
+
   analyzing.value = true;
-  
+
+  // 创建临时canvas
+  const tempCanvas = document.createElement('canvas');
+  const ctx = tempCanvas.getContext('2d');
+
+  // 设置临时canvas尺寸为图片实际尺寸
+  tempCanvas.width = imageElement.naturalWidth;
+  tempCanvas.height = imageElement.naturalHeight;
+
+  // 绘制原始图片
+  ctx.drawImage(imageElement, 0, 0);
+  // Get image data from canvas
+  const imageData = ctx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
+  const pixels = imageData.data;
+
+  // Create 3D array [width][height][rgb]
+  const imageArray = new Array(tempCanvas.width);
+  for (let x = 0; x < tempCanvas.width; x++) {
+    imageArray[x] = new Array(tempCanvas.height);
+    for (let y = 0; y < tempCanvas.height; y++) {
+      // Calculate position in the pixels array (4 values per pixel - r,g,b,a)
+      const pos = (y * tempCanvas.width + x) * 4;
+      // Store RGB values (skip alpha)
+      imageArray[x][y] = [
+        pixels[pos],     // R
+        pixels[pos + 1], // G 
+        pixels[pos + 2]  // B
+      ];
+    }
+  }
+
+  let result;
+  // Send POST request to segment API
   try {
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    const response = await fetch(SEGMENT_BOX_API, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        image: imageArray
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`API request failed: ${response.status}`);
+    }
+
+    result = await response.json();
+    console.log('Segmentation result:', result);
+  } catch (error) {
+    console.error('Error calling segment API:', error);
+    analyzing.value = false;
+    return;
+  }
+
+  try {
+    // Process masked images from result
+    const rect = canvasImage.value.$el.getBoundingClientRect();
+    const canvasRect = canvasRef.value.getBoundingClientRect();
+    const offsetX = rect.left - canvasRect.left;
+    const offsetY = rect.top - canvasRect.top;
+    const ratio = rect.width / tempCanvas.width;
+    let boxes = result.cropped_bboxes.map(box => ({
+      x: box[1],
+      y: box[0],
+      width: box[3],
+      height: box[2],
+    }));
+    boxes.forEach(box => {
+      box.area = box.width * box.height;
+    });
+    boxes.sort((a, b) => b.area - a.area);
+    const minArea = boxes[10].area * 0.25;
+    boxes = boxes.filter(box => box.area >= minArea);
+
+    for (let i = 0; i < boxes.length; i++) {
+      const toRemove = [];
+      for (let j = i + 1; j < boxes.length; j++) {
+        const box1 = boxes[i];
+        const box2 = boxes[j];
+        
+        // Calculate intersection area
+        const xOverlap = Math.max(0, Math.min(box1.x + box1.width, box2.x + box2.width) - Math.max(box1.x, box2.x));
+        const yOverlap = Math.max(0, Math.min(box1.y + box1.height, box2.y + box2.height) - Math.max(box1.y, box2.y));
+        const overlapArea = xOverlap * yOverlap;
+        
+        // Calculate box2's area
+        const box2Area = box2.width * box2.height;
+        
+        // If more than 85% of box2 is covered by box1, remove box2
+        if (overlapArea / box2Area > 0.85) {
+          toRemove.push(j);
+        }
+      }
+      // If box i overlaps with 3 or more other boxes, mark box i for removal
+      if (toRemove.length >= 3) {
+        boxes.splice(i, 1);
+        --i;
+      } else {
+        // Remove all marked boxes in reverse order to maintain correct indices
+        toRemove.reverse();
+        for (const index of toRemove) {
+          boxes.splice(index, 1);
+        }
+      }
+    }
     
-    const boxCount = Math.floor(Math.random() * 4) + 3;
-    for (let i = 0; i < boxCount; i++) {
-      const canvasRect = canvasRef.value.getBoundingClientRect();
-      const width = 150 + Math.random() * 200;
-      const height = 150 + Math.random() * 200;
-      const x = Math.random() * (canvasRect.width - width);
-      const y = Math.random() * (canvasRect.height - height);
-      
+    for (let {x, y, width, height} of boxes) {
       drawElements.value.push(createBoundingBox({
-        x,
-        y,
-        width,
-        height,
+        x: x * ratio + offsetX,
+        y: y * ratio + offsetY,
+        width: width * ratio,
+        height: height * ratio,
         index: drawElements.value.length
       }));
     }
@@ -929,27 +1036,27 @@ const queryImage = async () => {
   }
   queryImageStatus.value = true;
 
-  // 创建临时canvas
-  const tempCanvas = document.createElement('canvas');
-  const ctx = tempCanvas.getContext('2d');
-
-  // 获取原始图片元素
-  const originalImage = canvasRef.value.querySelector('img');
-  if (!originalImage) {
+  // 获取图片元素
+  const imageElement = canvasImage.value?.$el?.querySelector('img');
+  if (!imageElement) {
     queryImageStatus.value = false;
     return;
   }
 
+  // 创建临时canvas
+  const tempCanvas = document.createElement('canvas');
+  const ctx = tempCanvas.getContext('2d');
+
   // 设置临时canvas尺寸为图片实际尺寸
-  tempCanvas.width = originalImage.naturalWidth;
-  tempCanvas.height = originalImage.naturalHeight;
+  tempCanvas.width = imageElement.naturalWidth;
+  tempCanvas.height = imageElement.naturalHeight;
 
   // 绘制原始图片
-  ctx.drawImage(originalImage, 0, 0);
+  ctx.drawImage(imageElement, 0, 0);
 
   // 计算缩放比例
-  const scaleX = originalImage.naturalWidth / canvasRef.value.offsetWidth;
-  const scaleY = originalImage.naturalHeight / canvasRef.value.offsetHeight;
+  const scaleX = imageElement.naturalWidth / canvasRef.value.offsetWidth;
+  const scaleY = imageElement.naturalHeight / canvasRef.value.offsetHeight;
 
   // 绘制所有bounding boxes
   ctx.lineWidth = 2;
