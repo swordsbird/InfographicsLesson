@@ -38,7 +38,7 @@ import DesignView from './components/DesignView.vue';
 export default {
   name: 'App',
   data: () => ({
-    activeTab: 'understand',
+    activeTab: 'design',
   }),
 }
 </script>
