@@ -206,21 +206,49 @@
       <!-- 右侧栏 -->
       <div class="right-sidebar">
         <div class="upper-section">
-          <!-- 添加标题 -->
-          <div class="section-title pa-2">
-            已有图标
+          <!-- 添加标题和上传按钮 -->
+          <div class="section-title pa-2 d-flex align-center justify-space-between">
+            <span>已有图标</span>
+            <v-btn
+              icon="mdi-upload"
+              size="small"
+              @click="$refs.fileInput.click()"
+              class="ml-2"
+            ></v-btn>
           </div>
+
+          <!-- 隐藏的文件输入框 -->
+          <input
+            ref="fileInput"
+            type="file"
+            accept="image/*"
+            multiple
+            style="display: none"
+            @change="handleFileUpload"
+          >
+          
           <v-container class="pa-4">
             <v-row dense>
-              <v-col v-for="(path, index) in pictogramPaths" :key="index" cols="6" class="mb-2">
+              <v-col v-for="pictogram in allPictograms" :key="pictogram.id" cols="6" class="mb-2">
                 <div class="square-card">
                   <div class="image-container">
                     <v-img
-                      :src="path"
-                      @click="addImageToChart(path)"
+                      :src="pictogram.isDefault ? pictogram.url : pictogram.url"
+                      @click="addImageToChart(pictogram.url)"
                       class="square-image"
                       contain
                     ></v-img>
+                    
+                    <!-- 只为自定义图标显示删除按钮 -->
+                    <v-btn
+                      v-if="!pictogram.isDefault"
+                      icon="mdi-delete"
+                      size="x-small"
+                      color="error"
+                      variant="flat"
+                      class="delete-btn"
+                      @click.stop="deletePictogram(pictogram.id)"
+                    ></v-btn>
                   </div>
                 </div>
               </v-col>
@@ -314,6 +342,8 @@ const segmentedImages = ref([]);
 
 // 添加新的响应式变量
 const savedDesigns = ref([]);
+const fileInput = ref(null);
+const customPictograms = ref([]); // 存储用户上传的图标
 
 // 在 onMounted 中加载分割图片数据
 onMounted(() => {
@@ -364,6 +394,15 @@ onMounted(() => {
     return false;
   });
 
+  // 从 localStorage 加载自定义图标
+  try {
+    const savedPictograms = localStorage.getItem('customPictograms');
+    if (savedPictograms) {
+      customPictograms.value = JSON.parse(savedPictograms);
+    }
+  } catch (error) {
+    console.error('从localStorage加载自定义图标失败:', error);
+  }
 });
 
 // 生成图表函数
@@ -1104,6 +1143,71 @@ const deleteSvg = (svgId) => {
   localStorage.setItem('savedSvgs', JSON.stringify(svgFiles.value));
 };
 
+// 添加上传图标的处理函数
+const handleFileUpload = (event) => {
+  const files = event.target.files;
+  if (!files.length) return;
+
+  Array.from(files).forEach(file => {
+    if (!file.type.startsWith('image/')) {
+      alert('请上传图片文件');
+      return;
+    }
+
+    if (file.size > 2 * 1024 * 1024) { // 2MB 限制
+      alert('图片大小不能超过 2MB');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const newPictogram = {
+        id: `pictogram_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        url: e.target.result,
+        name: file.name
+      };
+      
+      customPictograms.value.push(newPictogram);
+      saveCustomPictogramsToLocalStorage();
+    };
+    reader.readAsDataURL(file);
+  });
+
+  // 清空文件输入框，允许重复上传同一文件
+  event.target.value = '';
+};
+
+// 保存自定义图标到 localStorage
+const saveCustomPictogramsToLocalStorage = () => {
+  try {
+    localStorage.setItem('customPictograms', JSON.stringify(customPictograms.value));
+  } catch (error) {
+    console.error('保存自定义图标失败:', error);
+    if (error.name === 'QuotaExceededError') {
+      // 如果存储空间不足，删除最旧的图标
+      customPictograms.value = customPictograms.value.slice(-10);
+      localStorage.setItem('customPictograms', JSON.stringify(customPictograms.value));
+    }
+  }
+};
+
+// 删除自定义图标
+const deletePictogram = (pictogramId) => {
+  customPictograms.value = customPictograms.value.filter(p => p.id !== pictogramId);
+  saveCustomPictogramsToLocalStorage();
+};
+
+// 计算所有可用的图标（包括预设和自定义的）
+const allPictograms = computed(() => {
+  const defaultPictograms = pictogramPaths.value.map(path => ({
+    id: path,
+    url: path,
+    isDefault: true
+  }));
+  
+  return [...defaultPictograms, ...customPictograms.value];
+});
+
 </script>
 
 
@@ -1163,7 +1267,9 @@ const deleteSvg = (svgId) => {
 }
 
 .section-title {
-  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   padding: 12px 16px;
   font-size: 16px;
   font-weight: 500;
