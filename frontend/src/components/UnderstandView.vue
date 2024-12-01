@@ -94,13 +94,17 @@
         <div 
           class="canvas-wrapper position-relative" 
           ref="canvasRef" 
+          :style="{
+            'padding-top': selectedImage && imageRatio > 0.8 ? '200px' : '100px',
+            'padding-bottom': selectedImage && imageRatio > 0.8 ? '200px' : '100px'
+          }"
           @dblclick="handleCanvasDoubleClick"
           @click="selectElement($event, null)"
         >
           <!-- 添加占位提示 -->
-          <div v-if="!selectedImage" class="canvas-placeholder">
+          <div v-if="!selectedImage" class="canvas-placeholder" style="display: flex; flex-direction: column; align-items: center; justify-content: center;">
             <v-icon size="64" color="grey">mdi-image-outline</v-icon>
-            <div class="placeholder-text">请在左边栏选择一张信息图表</div>
+            <div class="placeholder-text" style="text-align: center;">请在左边栏选择一张信息图表</div>
           </div>
 
           <!-- 原有的画布内容 -->
@@ -167,7 +171,7 @@
                   class="pictogram-content" 
                   v-html="element.content">
                 </div>
-                <div class="resize-handle" @mousedown.stop="startResize($event, element.id)"></div>
+                <div v-if="elementsVisible" class="resize-handle" @mousedown.stop="startResize($event, element.id)"></div>
               </div>
 
               <!-- 独立的边框box -->
@@ -293,15 +297,24 @@
         <!-- 分析部分 -->
         <div class="analyze-section">
           <!-- 添加分析按钮 -->
-          <v-btn
-            color="dark"
-            density="comfortable"
-            class="mb-4 mx-2"
-            :loading="analyzing"
-            @click="analyzeImage"
-          >
-            检测元素
-          </v-btn>
+          <div class="d-flex gap-2 mb-4 mx-2">
+            <v-btn
+              color="dark"
+              density="comfortable"
+              :loading="analyzing"
+              @click="analyzeImage"
+            >
+              检测元素
+            </v-btn>
+            <v-btn
+              color="error"
+              density="comfortable"
+              @click="clearElements"
+              :disabled="!drawElements.length"
+            >
+              清空元素
+            </v-btn>
+          </div>
           <div class="detection-list" style="max-height: 150px; overflow-y: auto;">
             <!-- 检测结果列表 -->
             <v-chip
@@ -317,18 +330,41 @@
             </v-chip>
           </div>
           <div class="divider my-2" style="border-top: 1px solid rgba(0, 0, 0, 0.12);"></div>
-          <textarea
-            v-model="customOverallPrompt"
-            placeholder="请输入提示词，用于指导信息图理解"
-            rows="6"
-            class="prompt-textarea"
-          ></textarea>
-          <textarea
-            v-model="customBoxPrompt"
-            placeholder="请输入提示词，用于指导信息图理解"
-            rows="6"
-            class="prompt-textarea"
-          ></textarea>
+          <div class="d-flex align-center gap-2 mb-2" style="position: relative;">
+            <textarea
+              v-model="customOverallPrompt"
+              placeholder="请输入提示词，用于指导信息图整体理解"
+              rows="6"
+              class="prompt-textarea"
+            ></textarea>
+            <v-btn
+              color="dark"
+              size="small"
+              v-if="customOverallPrompt == ''"
+              @click="useDefaultOverallPrompt"
+              style="position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);"
+            >
+              使用样例提示词
+            </v-btn>
+          </div>
+
+          <div class="d-flex align-center gap-2 mb-2" style="position: relative;">
+            <textarea
+              v-model="customBoxPrompt"
+              placeholder="请输入提示词，用于指导信息图元素理解"
+              rows="6"
+              class="prompt-textarea"
+            ></textarea>
+            <v-btn
+              color="dark"
+              size="small"
+              v-if="customBoxPrompt == ''"
+              @click="useDefaultBoxPrompt"
+              style="position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);"
+            >
+              使用样例提示词
+            </v-btn>
+          </div>
           <!-- 添加导出按钮 -->
           <v-btn
             color="dark"
@@ -347,10 +383,9 @@
   </v-main>
 </template>
 <script setup>
-import { ref, onMounted, onUnmounted, onBeforeUnmount, watch, nextTick, computed } from 'vue';
-import { VueDraggableNext } from 'vue-draggable-next'
+import { ref, onMounted, onUnmounted, watch, nextTick, computed } from 'vue';
 import { analyzeWithOpenAI, defaultOverallPrompt, defaultBoxPrompt } from './utils/llm';
-import { createBaseElement, createTextElement, createPictogramElement, createBoundingBox, ELEMENT_TYPES, SHORT_ELEMENT_TYPES } from './utils/elements';
+import { createTextElement, createPictogramElement, createBoundingBox, ELEMENT_TYPES, SHORT_ELEMENT_TYPES } from './utils/elements';
 import { SEGMENT_API, SEGMENT_BOX_API } from './utils/OPENAI_API';
 // 使用 glob 导入所有图片
 const imageModules = import.meta.glob('../assets/images/*.png', { eager: true })
@@ -376,9 +411,10 @@ const images = ref(
 );
 
 const selectedImage = ref('');
+const imageRatio = ref(0);
 const fileInput = ref(null);
-const customOverallPrompt = ref(defaultOverallPrompt);
-const customBoxPrompt = ref(defaultBoxPrompt);
+const customOverallPrompt = ref("");
+const customBoxPrompt = ref("");
 // 触发文件选择
 const triggerFileInput = () => {
   fileInput.value.click();
@@ -610,6 +646,13 @@ const saveTextEdit = (event, id) => {
 const handlePictogramSelect = (pictogram) => {
   currentPictogram.value = pictogram;
 };
+const useDefaultOverallPrompt = () => {
+  customOverallPrompt.value = defaultOverallPrompt;
+};
+
+const useDefaultBoxPrompt = () => {
+  customBoxPrompt.value = defaultBoxPrompt;
+};
 
 // 定义可能的样式配置
 const boxStyles = [
@@ -657,28 +700,6 @@ const getBoxType = (type) => {
 };
 
 const canvasSize = ref({ width: 0, height: 0 });
-// 修改图片变化处理函数
-const handleImageChange = () => {
-  // 如果当前有元素，先保存到 localStorage
-  if (drawElements.value.length > 0) {
-    const storageKey = `boxes_${selectedImage.value}`;
-    localStorage.setItem(storageKey, JSON.stringify(drawElements.value));
-  }
-
-  // 清空当前元素
-  drawElements.value = [];
-  
-  // 从 localStorage 加载数据
-  if (selectedImage.value) {
-    const storageKey = `boxes_${selectedImage.value}`;
-    const savedData = localStorage.getItem(storageKey);
-    if (savedData) {
-      drawElements.value = JSON.parse(savedData);
-    }
-    
-    const newValue = selectedImage.value.split('/').pop();
-  }
-};
 
 // 更新画布尺寸
 const updateCanvasSize = () => {
@@ -762,7 +783,13 @@ const startResize = (event, id) => {
   document.addEventListener('mouseup', stopResize);
 };
 
-// TODO
+
+const clearElements = () => {
+  drawElements.value = [];
+  selectedElementId.value = null;
+  saveBoxesToStorage(selectedImage.value);
+};
+
 const analyzeImage = async () => {
   if (!selectedImage.value) {
     alert('请先选择一张图片');
@@ -971,12 +998,6 @@ const STORAGE_KEY_PREFIX = 'image_boxes_';
 // 获取当前图片的存储键
 const getStorageKey = (imageId) => `${STORAGE_KEY_PREFIX}${imageId}`;
 
-// 添加 getImageId 计算属性
-const getImageId = computed(() => {
-  if (!selectedImage.value) return null;
-  return selectedImage.value.split('/').pop(); // 获取文件名作为ID
-});
-
 // 修改 saveBoxesToStorage 函数
 const saveBoxesToStorage = (imageId) => {
   if (!imageId) return;
@@ -1088,8 +1109,8 @@ const queryImage = async () => {
     const ctx = tempCanvas.getContext('2d');
     tempCanvas.width = imageElement.naturalWidth * ratio;
     tempCanvas.height = imageElement.naturalHeight * ratio;
-    ctx.drawImage(imageElement, 0, 0, tempCanvas.width, tempCanvas.height);
 
+    ctx.drawImage(imageElement, 0, 0, tempCanvas.width, tempCanvas.height);
     ctx.lineWidth = 2;
 
     const scaleX = imageElement.naturalWidth / canvasImage.value.$el.offsetWidth * ratio;
@@ -1108,6 +1129,8 @@ const queryImage = async () => {
       const scaledY = (box.y - offsetY) * scaleY;
       const scaledWidth = box.width * scaleX;
       const scaledHeight = box.height * scaleY;
+      ctx.strokeStyle = 'red';
+      ctx.strokeWidth = 4;
       ctx.strokeRect(scaledX, scaledY, scaledWidth, scaledHeight);
     }
 
@@ -1124,7 +1147,7 @@ const queryImage = async () => {
         color: currentTextStyle.value.color
       };
       const titleWidth = 400;
-      console.log("imageElement.naturalWidth", imageElement.naturalWidth)
+
       drawElements.value.push(createTextElement({
         x: imageElement.naturalWidth * 0.75 - titleWidth / 2,
         y: 20,
@@ -1135,7 +1158,6 @@ const queryImage = async () => {
         style: titleStyle
       }));
       
-      // 添加描述文本框
       const descStyle = {
         fontSize: FONT_SIZES.find(size => size.label === 'Middle').value,
         color: currentTextStyle.value.color
@@ -1154,17 +1176,81 @@ const queryImage = async () => {
     } else {
       const box = boxes[i];
       const result = await analyzeWithOpenAI(dataUrl, customBoxPrompt.value);
+      // const link = document.createElement('a');
+      // link.download = `annotated_${Date.now()}.png`;
+      // link.href = dataUrl;
+      // link.click();
+
       const { content } = result;
       const elementStyle = {
         fontSize: FONT_SIZES.find(size => size.label === 'Middle').value,
         color: currentTextStyle.value.color
       };
+
       const elementWidth = 200;
+
+      const x = box.x + box.width / 2 - elementWidth / 2;
+      const y = box.y + box.height / 2 + 10;
+      const width = elementWidth;
+      const height = calculateTextHeight(content, width, elementStyle);
+
+      const scaledX = (x - offsetX) * scaleX;
+      const scaledY = (y - offsetY) * scaleY;
+      const scaledWidth = width * scaleX;
+      const scaledHeight = height * scaleY;
+
+      // Calculate average RGB for the scaled region
+      let totalR = 0, totalG = 0, totalB = 0;
+      let pixelCount = 0;
+      
+      // Get image data from tempCanvas
+      const imageData = ctx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
+      const pixels = imageData.data;
+      for (let x = Math.floor(scaledX); x < Math.floor(scaledX + scaledWidth); x++) {
+        for (let y = Math.floor(scaledY); y < Math.floor(scaledY + scaledHeight); y++) {
+          if (x >= 0 && x < tempCanvas.width && y >= 0 && y < tempCanvas.height) {
+            const pos = (y * tempCanvas.width + x) * 4;
+            totalR += pixels[pos];
+            totalG += pixels[pos + 1];
+            totalB += pixels[pos + 2];
+            pixelCount++;
+          }
+        }
+      }
+
+      const avgR = totalR / pixelCount;
+      const avgG = totalG / pixelCount;
+      const avgB = totalB / pixelCount;
+
+      // Find most contrasting color from TEXT_COLORS
+      let maxDiff = -1;
+      let bestColor = TEXT_COLORS[0].value;
+
+      TEXT_COLORS.forEach(colorOption => {
+        // Convert hex to RGB
+        const hex = colorOption.value.replace('#', '');
+        const r = parseInt(hex.substr(0,2), 16);
+        const g = parseInt(hex.substr(2,2), 16);
+        const b = parseInt(hex.substr(4,2), 16);
+
+        // Calculate color difference using simple RGB distance
+        const diff = Math.sqrt(
+          Math.pow(r - avgR, 2) + 
+          Math.pow(g - avgG, 2) + 
+          Math.pow(b - avgB, 2)
+        );
+
+        if (diff > maxDiff) {
+          maxDiff = diff;
+          bestColor = colorOption.value;
+        }
+      });
+
+      elementStyle.color = bestColor;
+
       drawElements.value.push(createTextElement({
-        x: box.x + box.width / 2 - elementWidth / 2,
-        y: box.y + box.height / 2 + 10,
-        width: elementWidth,
-        height: calculateTextHeight(content, elementWidth, elementStyle),
+        x: x,
+        y: y, width, height,
         index: drawElements.value.length,
         content: content,
         style: elementStyle
@@ -1241,7 +1327,14 @@ watch(() => selectedImage.value, (newImage, oldImage) => {
     selectedElementId.value = null;
     isEditing.value = false;
     editingElementId.value = null;
+    console.log("selectedImage", selectedImage.value)
   }
+});
+
+watch(() => canvasImage.value, () => {
+  const img = canvasImage.value.$el.querySelector('img');
+  imageRatio.value = img?.naturalWidth / img?.naturalHeight || 0;
+  console.log("imageRatio", imageRatio.value);
 });
 
 // 删除元素
