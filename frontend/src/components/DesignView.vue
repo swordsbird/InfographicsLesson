@@ -211,7 +211,7 @@
                   <div class="image-container">
                     <v-img
                       cover
-                      height="100"
+                      height="200"
                       :src="image.url"
                       @click="addSegmentToChart(image)"
                     ></v-img>
@@ -886,7 +886,7 @@ const addSegmentToChart = (image) => {
 
 <style scoped>
 .right-sidebar {
-  width: 20%;
+  width: 25%;
   display: flex;
   flex-direction: column;
   border-left: 1px solid rgba(0, 0, 0, 0.12);
@@ -914,11 +914,17 @@ const addSegmentToChart = (image) => {
 .segment-image-card {
   position: relative;
   overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .image-container {
   position: relative;
   width: 100%;
   height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 </style>
