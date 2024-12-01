@@ -87,7 +87,6 @@
 
           <v-btn
             class="ml-4"
-            color="primary"
             :disabled="!maskImage"
             @click="confirmSegment"
             :loading="isConfirming"
@@ -101,11 +100,12 @@
           <!-- 添加重置按钮 -->
           <v-btn
             class="ml-4"
-            color="error"
+
             :disabled="!maskImage && drawElements.length === 0"
             @click="resetSegmentation"
             size="default"
             density="comfortable"
+            color="error"
             style="width: 120px; height: 40px"
           >
             重置
@@ -162,18 +162,22 @@
 
       <!-- 右侧边栏 -->
       <div class="right-sidebar">
+        <!-- 添加标题 -->
+        <div class="sidebar-title">
+          分割结果
+        </div>
+        
         <div class="upper-section">
           <v-container class="pa-4">
             <v-row dense>
               <v-col v-for="(image, index) in segmentedImages" :key="index" cols="6" class="mb-2">
-                <v-card variant="outlined" class="segment-image-card">
+                <div class="square-card">
                   <!-- 图片容器 -->
                   <div class="image-container">
                     <v-img
-                      cover
-                      height="100"
                       :src="image.url"
                       @click="handleSegmentImageClick(image)"
+                      class="segment-image"
                     ></v-img>
                     
                     <!-- 删除按钮 -->
@@ -186,7 +190,7 @@
                       @click.stop="deleteSegmentImage(image.id)"
                     ></v-btn>
                   </div>
-                </v-card>
+                </div>
               </v-col>
             </v-row>
           </v-container>
@@ -667,7 +671,7 @@ const analyzeImage = async () => {
       })
     });
     
-    // 添加响应状��检查
+    // 添加响应状检查
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`);
     }
@@ -907,4 +911,89 @@ const resetSegmentation = () => {
 </script>
 
 <style scoped src="./segment.css">
+</style>
+
+<style scoped>
+/* ... 其他样式保持不变 ... */
+
+.square-card {
+  position: relative;
+  width: 100%;
+  padding-bottom: 100%; /* 创建正方形容器 */
+  background-color: white;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.image-container {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.segment-image {
+  width: 100%;
+  height: 100%;
+}
+
+.segment-image :deep(img) {
+  object-fit: contain !important;
+  width: 100%;
+  height: 100%;
+}
+
+.delete-btn {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  z-index: 1;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.image-container:hover .delete-btn {
+  opacity: 1;
+}
+
+.right-sidebar {
+  width: 20%;
+  height: 100%;
+  border-left: 1px solid rgba(0, 0, 0, 0.12);
+  background-color: #f5f5f5;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.upper-section {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+}
+
+/* 美化滚动条 */
+.upper-section::-webkit-scrollbar {
+  width: 6px;
+}
+
+.upper-section::-webkit-scrollbar-thumb {
+  background-color: rgba(0, 0, 0, 0.2);
+  border-radius: 3px;
+}
+
+.upper-section::-webkit-scrollbar-track {
+  background-color: rgba(0, 0, 0, 0.1);
+}
+
+.sidebar-title {
+  padding: 12px 16px;
+  font-size: 16px;
+  font-weight: 500;
+  color: rgba(0, 0, 0, 0.87);
+  background-color: #e0e0e0;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.12);
+}
 </style>

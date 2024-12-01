@@ -13,7 +13,7 @@
                 <v-select
                   v-model="selectedJsonFile"
                   :items="jsonFiles"
-                  label="选择 JSON 文件"
+                  label="选择图表数据"
                   variant="outlined"
                   dense
                 ></v-select>
@@ -27,7 +27,23 @@
                   label="选择图表类型"
                   variant="outlined" 
                   dense
-                ></v-select>
+                  item-title="text"
+                  item-value="value"
+                >
+                  <template v-slot:selection="{ item }">
+                    <v-icon :icon="item.raw.icon" size="small" class="mr-2"></v-icon>
+                    {{ item.raw.text }}
+                  </template>
+                  
+                  <template v-slot:item="{ props, item }">
+                    <v-list-item v-bind="props">
+                      <template v-slot:prepend>
+                        <v-icon :icon="item.raw.icon" size="small"></v-icon>
+                      </template>
+                      <!-- <v-list-item-title>{{ item.raw.text }}</v-list-item-title> -->
+                    </v-list-item>
+                  </template>
+                </v-select>
               </v-col>
 
               <!-- 交互模式切换 -->
@@ -60,37 +76,42 @@
 
         <!-- 搜索框和图片列表 -->
         <div class="search-and-images">
-          <div class="search-container">
-            <v-text-field
-              prepend-inner-icon="mdi-magnify"
-              variant="outlined"
-              placeholder="搜索图片"
-              hide-details
-              class="pa-2"
-              density="comfortable"
-              bg-color="white"
-              color="black"
-            ></v-text-field>
+          <!-- 添加标题 -->
+          <div class="section-title pa-2">
+            已保存的图表
           </div>
+          
           <div class="scrollable-content">
             <v-container class="px-2 py-2">
               <v-row dense>
                 <v-col
-                  v-for="(svgFile, index) in svgFiles"
-                  :key="index"
+                  v-for="(svg, index) in svgFiles"
+                  :key="svg.id"
                   cols="12"
                   class="pa-1"
                 >
                   <v-card
                     variant="outlined"
                     class="image-card"
-                    @click="loadSvg(svgFile)"
+                    @click="loadSvg(svg)"
                   >
-                    <v-img
-                      cover
-                      height="150"
-                      :src="`/svg/${svgFile}`"
-                    ></v-img>
+                    <div class="d-flex align-center pa-2">
+                      <div class="flex-grow-1">
+                        <v-img
+                          cover
+                          height="150"
+                          :src="svg.url"
+                        ></v-img>
+                      </div>
+                      <v-btn
+                        icon="mdi-delete"
+                        size="small"
+                        color="error"
+                        variant="text"
+                        class="ml-2"
+                        @click.stop="deleteSvg(svg.id)"
+                      ></v-btn>
+                    </div>
                   </v-card>
                 </v-col>
               </v-row>
@@ -100,9 +121,9 @@
       </div>
 
       <!-- 中间画布区域 - 60% -->
-      <div class="canvas-container">
+      <div class="canvas-container" @contextmenu.prevent>
         <div class="canvas-wrapper">
-          <div id="chartCanvas"></div>
+          <div id="chartCanvas" @contextmenu.prevent></div>
           <!-- <canvas id="chartCanvas"></canvas> -->
           <v-btn @click="saveSvg" color="primary">保存SVG</v-btn>
           <template v-for="(element, index) in drawElements" :key="element.id">
@@ -185,38 +206,54 @@
       <!-- 右侧栏 -->
       <div class="right-sidebar">
         <div class="upper-section">
-          <!-- Pictogram 部分 -->
+          <!-- 添加标题 -->
+          <div class="section-title pa-2">
+            已有图标
+          </div>
           <v-container class="pa-4">
             <v-row dense>
-              <v-col v-for="(path, index) in pictogramPaths" :key="index" cols="3" class="mb-2">
-                <v-img
-                  cover
-                  height="100"
-                  :src="path"
-                  @click="addImageToChart(path)"
-                ></v-img>
-                <div class="text-center">{{ processPath(path) }}</div>
+              <v-col v-for="(path, index) in pictogramPaths" :key="index" cols="6" class="mb-2">
+                <div class="square-card">
+                  <div class="image-container">
+                    <v-img
+                      :src="path"
+                      @click="addImageToChart(path)"
+                      class="square-image"
+                      contain
+                    ></v-img>
+                  </div>
+                </div>
               </v-col>
             </v-row>
           </v-container>
         </div>
 
-        <!-- 添加分割图片部分 -->
+        <!-- 分割图片部分 -->
         <div class="middle-section">
-          <div class="section-title pa-2">分割图片</div>
+          <div class="section-title pa-2">
+            分割图片 ({{ segmentedImages.length }})
+          </div>
           <v-container class="pa-4">
             <v-row dense>
               <v-col v-for="image in segmentedImages" :key="image.id" cols="6" class="mb-2">
-                <v-card variant="outlined" class="segment-image-card">
+                <div class="square-card">
                   <div class="image-container">
                     <v-img
-                      cover
-                      height="200"
                       :src="image.url"
                       @click="addSegmentToChart(image)"
+                      class="segment-image"
+                      contain
                     ></v-img>
+                    <v-btn
+                      icon="mdi-delete"
+                      size="x-small"
+                      color="error"
+                      variant="flat"
+                      class="delete-btn"
+                      @click.stop="deleteSegmentImage(image.id)"
+                    ></v-btn>
                   </div>
-                </v-card>
+                </div>
               </v-col>
             </v-row>
           </v-container>
@@ -244,7 +281,12 @@ import { createBaseElement, createTextElement, createPictogramElement,
 // 选择器相关数据
 const jsonFiles = ref([]); // JSON 文件列表
 const selectedJsonFile = ref(''); // 用户选中的 JSON 文件
-const chartTypes = ref(['Bar', 'Pie', 'Line', 'Scatter Plot']); // 图表类型列表
+const chartTypes = ref([
+  { text: 'Bar', value: 'Bar', icon: 'mdi-chart-bar' },
+  { text: 'Pie', value: 'Pie', icon: 'mdi-chart-pie' },
+  { text: 'Line', value: 'Line', icon: 'mdi-chart-line' },
+  { text: 'Scatter Plot', value: 'Scatter Plot', icon: 'mdi-chart-scatter-plot' }
+]); // 图表类型列表
 const selectedChartType = ref(''); // 用户选中的图类型
 const chartData = ref(null); // 用于存储加载的 JSON 数据
 const svgFiles = ref([]); // SVG 文件列表
@@ -270,13 +312,24 @@ const targetType = ref('element');
 // 添加分割图片相关的状态
 const segmentedImages = ref([]);
 
+// 添加新的响应式变量
+const savedDesigns = ref([]);
+
 // 在 onMounted 中加载分割图片数据
 onMounted(() => {
   canvasRef.value = document.getElementById('chartCanvas');
   const files = import.meta.glob('/public/json/*.json'); // 匹配 public/json 文件夹中的 JSON 文件
   jsonFiles.value = Object.keys(files).map(filePath => filePath.replace('/public/json/', ''));
-  const svgFilesGlob = import.meta.glob('/public/svg/*.svg'); // 匹配 public/svg 文件夹中的 SVG 文件
-  svgFiles.value = Object.keys(svgFilesGlob).map(filePath => filePath.replace('/public/svg/', ''));
+  
+  // 从 localStorage 加载已保存的 SVG
+  try {
+    const savedSvgs = localStorage.getItem('savedSvgs');
+    if (savedSvgs) {
+      svgFiles.value = JSON.parse(savedSvgs);
+    }
+  } catch (error) {
+    console.error('从localStorage加载SVG失败:', error);
+  }
   
   const pictogramsGlobal = import.meta.glob('/public/pictogram/*.png');
   pictogramPaths.value = Object.keys(pictogramsGlobal).map(filePath => filePath.replace('/public/', ''));
@@ -288,10 +341,29 @@ onMounted(() => {
     const savedSegments = localStorage.getItem('segmentedImages');
     if (savedSegments) {
       segmentedImages.value = JSON.parse(savedSegments);
+      console.log('Loaded segmented images:', segmentedImages.value);
+      
+      // 检查每个图片的 URL
+      segmentedImages.value.forEach((img, index) => {
+        console.log(`Image ${index}:`, {
+          id: img.id,
+          urlLength: img.url.length,
+          hasData: img.url.startsWith('data:'),
+          dimensions: `${img.originalWidth}x${img.originalHeight}`
+        });
+      });
     }
   } catch (error) {
     console.error('从localStorage加载分割图片失败:', error);
   }
+
+  // 禁用画布的右键菜单
+  const canvas = document.getElementById('chartCanvas');
+  canvas.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    return false;
+  });
+
 });
 
 // 生成图表函数
@@ -329,8 +401,13 @@ const renderChart = async (meta_data, data, styles, width, height, type) => {
   await chart.preprocess();
   await chart.render(canvas);
 
-  // // 使用 plugins/chart.js 的 createChart 函数渲染图表
-  // createChart('chartCanvas', type, chartData, chartOptions);
+  // 确保图表有正确的ID
+  const chartElement = d3.select('#chartCanvas svg #chart');
+  if (!chartElement.empty()) {
+    chartElement
+      .attr('id', 'chart')
+      .attr('data-element-id', 'chart');
+  }
 };
 
 const parseSpecification = (spec) => {
@@ -349,7 +426,7 @@ const parseSpecification = (spec) => {
                     if (sub_styles !== undefined){
                         // 遍历sub_styles的字段
                         for (let key in sub_styles){
-                            // 如果key以'Color'结尾
+                            // key以'Color'结尾
                             if (key.endsWith('Color')){
                                 // 如果sub_styles[key]是数组
                                 if (sub_styles[key] instanceof Array){
@@ -435,43 +512,62 @@ const parseSpecification = (spec) => {
 }
 const saveSvg = async () => {
   const svgElement = document.querySelector('#chartCanvas svg');
-      if (!svgElement) {
-        console.error('SVG element not found');
-        return;
-      }
+  if (!svgElement) {
+    console.error('SVG element not found');
+    return;
+  }
 
-      const serializer = new XMLSerializer();
-      const svgString = serializer.serializeToString(svgElement);
-      const blob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
-
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = 'chart.svg';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-}
-
-const loadSvg = async (svgFile) => {
   try {
-    const response = await fetch(`/svg/${svgFile}`);
-    if (!response.ok) throw new Error('Failed to load SVG file');
+    const serializer = new XMLSerializer();
+    const svgString = serializer.serializeToString(svgElement);
+    
+    // 创建新的 SVG 记录
+    const newSvg = {
+      id: `svg_${Date.now()}`,
+      url: `data:image/svg+xml;base64,${btoa(svgString)}`,
+      timestamp: Date.now()
+    };
+    
+    // 添加到数组
+    svgFiles.value.unshift(newSvg);
+    
+    // 保存到 localStorage
+    localStorage.setItem('savedSvgs', JSON.stringify(svgFiles.value));
+    
+  } catch (error) {
+    console.error('保存SVG失败:', error);
+    alert('保存失败，请重试');
+  }
+};
 
-    const svgText = await response.text();
+const loadSvg = async (svg) => {
+  try {
     const chartCanvas = document.getElementById('chartCanvas');
-    chartCanvas.innerHTML = svgText;
-    // Add non-selectable attribute to SVG
-    const svg = d3.select('#chartCanvas svg');
-    svg.selectAll('text')
-       .style('user-select', 'none')
-       .style('-webkit-user-select', 'none')
-       .style('-moz-user-select', 'none')
-       .style('-ms-user-select', 'none');
+    
+    // 如果是 base64 格式的 SVG 数据
+    if (svg.url.startsWith('data:image/svg+xml;base64,')) {
+      const svgString = atob(svg.url.split(',')[1]);
+      chartCanvas.innerHTML = svgString;
+    } else {
+      // 如果是文件路径（兼容旧数据）
+      const response = await fetch(svg.url);
+      if (!response.ok) throw new Error('Failed to load SVG file');
+      const svgText = await response.text();
+      chartCanvas.innerHTML = svgText;
+    }
+    
+    // 添加不可选择属性
+    const svgElement = d3.select('#chartCanvas svg');
+    svgElement.selectAll('text')
+      .style('user-select', 'none')
+      .style('-webkit-user-select', 'none')
+      .style('-moz-user-select', 'none')
+      .style('-ms-user-select', 'none');
+    
     addHoverEffect();
   } catch (error) {
-    console.error('Error loading SVG:', error);
+    console.error('加载SVG失败:', error);
+    alert('加载失败，请重试');
   }
 };
 
@@ -484,121 +580,113 @@ const clearInteractions = () => {
 };
 
 const addHoverEffect = () => {
-  clearInteractions(); // 清除所有交互功
-  const addEffect = (elementId, titleId, hoverColor, modifyFill = true) => {
-    const element = d3.select(`#${elementId}`);
-    const title = d3.select(`#${titleId}`);
-    
-    const setOriginalAttributes = (el) => {
-      el.selectAll('*').each(function() {
-        const item = d3.select(this);
-        item.attr('original-stroke', item.attr('stroke') || 'none');
-        if (modifyFill) {
-          item.attr('original-fill', item.attr('fill') || 'none');
-        }
-      });
-    };
-
-    setOriginalAttributes(element);
-    if (titleId) setOriginalAttributes(title);
-
-    const onMouseOver = () => {
-      if (isResizing.value) return;
-      element.selectAll('*').attr('stroke', hoverColor);
-      if (modifyFill) {
-        element.selectAll('*').attr('fill', hoverColor);
-      }
-      if (titleId) {
-        title.attr('stroke', hoverColor).attr('fill', hoverColor);
-      }
-    };
-
-    const onMouseOut = () => {
-      if (isResizing.value) return;
-      element.selectAll('*').attr('stroke', function() { return d3.select(this).attr('original-stroke'); });
-      if (modifyFill) {
-        element.selectAll('*').attr('fill', function() { return d3.select(this).attr('original-fill'); });
-      }
-      if (titleId) {
-        title.attr('stroke', function() { return d3.select(this).attr('original-stroke'); }).attr('fill', function() { return d3.select(this).attr('original-fill'); });
-      }
-    };
-
-    element.on('mouseover', onMouseOver).on('mouseout', onMouseOut);
-    if (titleId) title.on('mouseover', onMouseOver).on('mouseout', onMouseOut);
-  };
-
+  clearInteractions(); // 清除所有交互功能
+  
   const addBoundingBoxEffect = (elementId, titleId) => {
     const element = d3.select(`#${elementId}`);
-    const title = d3.select(`#${titleId}`);
+    const title = titleId ? d3.select(`#${titleId}`) : null;
     let boundingBoxId = null;
+    console.log("element", element);
   
     const onMouseOver = () => {
       if (isResizing.value) return;
-      const elementIndex = drawElements.value.length;
+      
+      // 获取元素的边界框
       let boundingBox;
-      if (titleId) {
-        const bbox = element.node().getBoundingClientRect();
-        const titleBbox = title.node().getBoundingClientRect();
-        const x1 = Math.min(bbox.x, titleBbox.x);
-        const y1 = Math.min(bbox.y, titleBbox.y);
-        const x2 = Math.max(bbox.x + bbox.width, titleBbox.x + titleBbox.width);
-        const y2 = Math.max(bbox.y + bbox.height, titleBbox.y + titleBbox.height);
-        const width = x2 - x1;
-        const height = y2 - y1;
-        boundingBox = [x1, y1, width, height];
-      } else {
-        const bbox = element.node().getBoundingClientRect();
-        boundingBox = [bbox.x, bbox.y, bbox.width, bbox.height];
-      }
+      const elementBBox = element.node().getBoundingClientRect();
+      boundingBox = {
+        x: elementBBox.left,
+        y: elementBBox.top,
+        width: elementBBox.width,
+        height: elementBBox.height
+      };
+      // const canvasElement = document.getElementById('chartCanvas');
+      // const canvasBBox = canvasElement.getBoundingClientRect();
+      
+      // // 调整坐标，使其相对于画布
+      // const adjustedX = elementBBox.x - canvasBBox.x;
+      // const adjustedY = elementBBox.y - canvasBBox.y;
+      
+      // if (titleId && title) {
+      //   const titleBBox = title.node().getBoundingClientRect();
+      //   const adjustedTitleX = titleBBox.x - canvasBBox.x;
+      //   const adjustedTitleY = titleBBox.y - canvasBBox.y;
+        
+      //   const x1 = Math.min(adjustedX, adjustedTitleX);
+      //   const y1 = Math.min(adjustedY, adjustedTitleY);
+      //   const x2 = Math.max(adjustedX + elementBBox.width, adjustedTitleX + titleBBox.width);
+      //   const y2 = Math.max(adjustedY + elementBBox.height, adjustedTitleY + titleBBox.height);
+        
+      //   boundingBox = {
+      //     x: x1,
+      //     y: y1,
+      //     width: x2 - x1,
+      //     height: y2 - y1
+      //   };
+      // } else {
+      //   boundingBox = {
+      //     x: adjustedX,
+      //     y: adjustedY,
+      //     width: elementBBox.width,
+      //     height: elementBBox.height
+      //   };
+      // }
+
+      // 创建边界框元素
       let newElement = createBoundingBox({
-        x: boundingBox[0],
-        y: boundingBox[1],
-        width: boundingBox[2],
-        height: boundingBox[3],
-        index: elementIndex,
+        x: boundingBox.x,
+        y: boundingBox.y,
+        width: boundingBox.width,
+        height: boundingBox.height,
+        index: drawElements.value.length,
       });
+      
       selectedElementId.value = newElement.id;
       boundingBoxId = newElement.id;
       drawElements.value.push(newElement);
-      targetType.value = 'element';
+      targetType.value = elementId === 'chart' ? 'chart' : 'element';
     };
   
     const onMouseOut = (event) => {
-      // if (isResizing.value) return;
-      // if (boundingBoxId !== null) {
-      //   const boundingBox = drawElements.value.find(el => el.id === boundingBoxId);
-      //   if (boundingBox) {
-      //     const bbox = boundingBox.$el.getBoundingClientRect();
-      //     if (
-      //       event.clientX < bbox.left ||
-      //       event.clientX > bbox.right ||
-      //       event.clientY < bbox.top ||
-      //       event.clientY > bbox.bottom
-      //     ) {
-      //       drawElements.value = drawElements.value.filter(el => el.id !== boundingBoxId);
-      //       boundingBoxId = null;
-      //     }
-      //   }
-      // }
+      if (isResizing.value) return;
+      if (boundingBoxId !== null && !fixedElementIdList.value.includes(boundingBoxId)) {
+        const boundingBox = drawElements.value.find(el => el.id === boundingBoxId);
+        if (boundingBox) {
+          const bbox = document.getElementById(boundingBoxId).getBoundingClientRect();
+          if (
+            event.clientX < bbox.left ||
+            event.clientX > bbox.right ||
+            event.clientY < bbox.top ||
+            event.clientY > bbox.bottom
+          ) {
+            drawElements.value = drawElements.value.filter(el => el.id !== boundingBoxId);
+            boundingBoxId = null;
+          }
+        }
+      }
     };
   
     element.on('mouseover', onMouseOver).on('mouseout', onMouseOut);
-    if (titleId) title.on('mouseover', onMouseOver).on('mouseout', onMouseOut);
+    if (title) {
+      title.on('mouseover', onMouseOver).on('mouseout', onMouseOut);
+    }
   };
 
-  if (isViewMode.value){
-    addEffect('x-axis', 'titlex-axis', 'red');
-    addEffect('y-axis', 'titley-axis', 'red');
-    addEffect('background', null, 'red');
-    addEffect('marks', null, 'red', false); // 为 marks 添加 hover 效果，只修改 stroke
-  }
-  else {
-    // addBoundingBoxEffect('x-axis', 'titlex-axis');
-    // addBoundingBoxEffect('y-axis', 'titley-axis');
-    // addBoundingBoxEffect('background', null);
-    // addBoundingBoxEffect('marks', null);
+  if (isViewMode.value) {
+    // 视图模式下添加hover效果
+    // addEffect('x-axis', 'titlex-axis', 'red');
+    // addEffect('y-axis', 'titley-axis', 'red');
+    // addEffect('background', null, 'red');
+    // addEffect('marks', null, 'red', false);
+  } else {
+    // 编辑模式下添加边界框效果
     addBoundingBoxEffect('chart', null);
+    // 为图片元素添加边界框效果
+    segmentedImages.value.forEach(image => {
+      if (document.getElementById(image.id)) {
+        addBoundingBoxEffect(image.id, null);
+      }
+    });
   }
 };
 
@@ -621,7 +709,19 @@ const handleBBoxMouseOut = (event, id) => {
   }
 };
 const handleBBoxClick = (event, id) => {
-  console.log("handleBBoxClick", id);
+  // 处理右键点击
+  if (event.button === 2) { // 2 表示右键
+    event.preventDefault();
+    event.stopPropagation();
+    console.log("handleBBoxClick right click", id);
+    // 如果是图片的边界框，删除对应的图片
+    if (currentImageId.value) {
+      deleteImage(currentImageId.value);
+    }
+    return;
+  }
+
+  // 原有的左键点击逻辑
   if (fixedElementIdList.value.includes(id)) {
     fixedElementIdList.value = fixedElementIdList.value.filter(el => el !== id);
   } else {
@@ -633,7 +733,6 @@ const handleBBoxClick = (event, id) => {
 const startResize = (event, id, targetType = 'element') => {
   event.preventDefault();
   event.stopPropagation();
-  console.log("startResize targetType", targetType);
   
   isResizing.value = true;
   selectedElementId.value = id;
@@ -644,25 +743,29 @@ const startResize = (event, id, targetType = 'element') => {
   const startWidth = element.width;
   const startHeight = element.height;
   const aspectRatio = startWidth / startHeight;
-  const targetElement = targetType === 'image' ? document.getElementById(currentImageId.value) : document.getElementById('chart');
-  console.log("targetElement", targetElement);
-  let targetBBox;
-  targetBBox = targetElement.getBoundingClientRect();
+
+  // 根据目标类型和ID选择正确的元素
+  let targetElement;
+  if (targetType === 'image') {
+    // 使用当前选中的图片ID
+    targetElement = document.getElementById(currentImageId.value);
+  } else if (targetType === 'chart') {
+    targetElement = document.getElementById('chart');
+  } else {
+    targetElement = document.querySelector(`[data-element-id="${id}"]`);
+  }
+
+  if (!targetElement) {
+    console.error('Target element not found:', id, targetType);
+    return;
+  }
+
+  const targetBBox = targetElement.getBoundingClientRect();
   const canvasElement = document.getElementById('chartCanvas');
   const canvasBBox = canvasElement.getBoundingClientRect();
   targetBBox.x = targetBBox.x - canvasBBox.x;
   targetBBox.y = targetBBox.y - canvasBBox.y;
   
-  // if (targetType === 'image') {
-  //   // targetBBox = {x:element.x, y:element.y, width:element.width, height:element.height};
-  //   targetBBox = targetElement.getBoundingClientRect();
-  // } else {
-  //   const targetParentElement = targetElement.parentElement;
-  //   targetBBox = targetParentElement.
-  // }
-  // const targetParentElement = targetElement.parentElement;
-  //  = targetParentElement.getBBox();
-  console.log("targetBBox", targetBBox);
   const targetX = targetBBox.x;
   const targetY = targetBBox.y;
   const targetWidth = targetBBox.width;
@@ -678,22 +781,17 @@ const startResize = (event, id, targetType = 'element') => {
     const dx = e.clientX - startX;
     const dy = e.clientY - startY;
     
-    let newWidth = Math.max(50, startWidth + dx);  // 最小宽度 50px
-    let newHeight = Math.max(50, startHeight + dy); // 最小高度 50px
+    let newWidth = Math.max(50, startWidth + dx);
+    let newHeight = Math.max(50, startHeight + dy);
 
-    // 保持长宽比
     if (newWidth / newHeight > aspectRatio) {
       newWidth = newHeight * aspectRatio;
     } else {
       newHeight = newWidth / aspectRatio;
     }
-    console.log("newWidth, newHeight", newWidth, newHeight);
 
     canvasRef.value = document.getElementById('chartCanvas');
-    // 获取画布边界
     const canvasRect = canvasRef.value.getBoundingClientRect();
-    
-    // 确保不超出画布
     const maxWidth = canvasRect.left + canvasRect.width - element.x;
     const maxHeight = canvasRect.top + canvasRect.height - element.y;
     
@@ -705,14 +803,12 @@ const startResize = (event, id, targetType = 'element') => {
     const newScale = `scale(${scaleX}, ${scaleY})`;
     const scaledX = targetX * scaleX;
     const scaledY = targetY * scaleY;
-    // console.log('targetX, targetY, scaledX, scaledY', targetX, targetY, scaledX, scaledY);
     const newTranslate = `translate(${targetX - scaledX}, ${targetY - scaledY})`;
-    console.log("newTranslate", newTranslate);
+
+    // 只更新当前选中的元素的transform
     if (transform === '') {
       targetElement.setAttribute('transform', `${newTranslate}, ${newScale}`);
-      // targetElement.setAttribute('transform', `${newScale}`);
-    }
-    else {
+    } else {
       targetElement.setAttribute('transform', `${newTranslate}, ${newScale}, ${transform}`);
     }
   };
@@ -744,10 +840,26 @@ const startDrag = (event, id, targetType = 'element') => {
     y: event.clientY
   };
 
-  const targetElement = targetType === 'image' ? document.getElementById(currentImageId.value) : document.getElementById('chart');
-  dragInitTransform.value = targetElement.getAttribute('transform');
-  document.addEventListener('mousemove', (e) => handleDrag(e, targetType));
-  document.addEventListener('mouseup', stopDrag);
+  // 根据目标类型选择正确的元素
+  let targetElement;
+  if (targetType === 'image') {
+    targetElement = document.getElementById(currentImageId.value);
+  } else if (targetType === 'chart') {
+    targetElement = document.getElementById('chart');
+  } else {
+    targetElement = document.querySelector(`[data-element-id="${id}"]`);
+  }
+
+  if (targetElement) {
+    dragInitTransform.value = targetElement.getAttribute('transform');
+  }
+
+  const handleDragWithType = (e) => handleDrag(e, targetType);
+  document.addEventListener('mousemove', handleDragWithType);
+  document.addEventListener('mouseup', () => {
+    document.removeEventListener('mousemove', handleDragWithType);
+    stopDrag();
+  });
 };
 
 const processPath = (path) => {
@@ -768,12 +880,22 @@ const handleDrag = (event, targetType) => {
   const canvas = canvasRef.value;
   const canvasRect = canvas.getBoundingClientRect();
 
-  // 获取目标元素大小
-  console.log("targetType", targetType);
-  const targetElement = targetType === 'image' ? document.getElementById(currentImageId.value) : document.getElementById('chart');
+  // 修改目标元素的选择逻辑
+  let targetElement;
+  if (targetType === 'image') {
+    targetElement = document.getElementById(currentImageId.value);
+  } else if (targetType === 'chart') {
+    targetElement = document.getElementById('chart');
+  } else {
+    targetElement = document.querySelector(`[data-element-id="${id}"]`);
+  }
+
+  if (!targetElement) {
+    console.error('Target element not found:', id, targetType);
+    return;
+  }
+
   const targetBBox = targetElement.getBoundingClientRect();
-  const targetWidth = targetBBox.width;
-  const targetHeight = targetBBox.height;
   
   // 确保元素不会拖出画布
   const maxX = canvasRect.left + canvasRect.width - element.width;
@@ -789,10 +911,11 @@ const handleDrag = (event, targetType) => {
   const translateX = element.x - elementInitX;
   const translateY = element.y - elementInitY;
   const newTranslate = `translate(${translateX}, ${translateY})`;
-  if (!dragInitTransform.value){
+  
+  // 只更新当前选中的元素的transform
+  if (!dragInitTransform.value) {
     targetElement.setAttribute('transform', newTranslate);
-  }
-  else {
+  } else {
     targetElement.setAttribute('transform', `${newTranslate}, ${dragInitTransform.value}`);
   }
 };
@@ -806,20 +929,28 @@ const stopDrag = (event) => {
 
 const addImageToChart = (path) => {
   const svg = d3.select('#chartCanvas svg');
-  const imageId = `image-${drawElements.value.length}`;
+  const imageId = `image-${Date.now()}`;
   const image = svg.append('image')
     .attr('id', imageId)
-    .attr('x', 50) // 初始位置，可根据需要调整
-    .attr('y', 50) // 初始位置，可根据需要调整
-    .attr('width', 100) // 初始宽度，可根据需要调整
-    .attr('height', 100) // 初始高度，可根据需要调整
+    .attr('data-element-id', imageId)
+    .attr('x', 50)
+    .attr('y', 50)
+    .attr('width', 100)
+    .attr('height', 100)
     .attr('href', path)
     .attr('opacity', 0.1);
-  
     
   image.transition()
     .duration(500)
     .attr('opacity', 1);
+  
+  // 添加右键点击事件
+  image.on('contextmenu', (event) => {
+    event.preventDefault();
+    event.stopPropagation(); // 阻止事件冒泡
+    deleteImage(imageId);
+    return false;
+  });
   
   image.on('mouseover', () => {
     targetType.value = 'image';
@@ -837,44 +968,140 @@ const addImageToChart = (path) => {
       currentImageId.value = imageId;
     }
   });
-
-  // image.on('mousedown', (event) => startDrag(event, boundingBox.id, 'image'));
 };
 
-// 添加分割图片到画布的方法
+// 添加删除图片的函数
+const deleteImage = (imageId) => {
+  // 删除SVG中的图片元素
+  const image = d3.select(`#${imageId}`);
+  if (!image.empty()) {
+    image.remove();
+  }
+  
+  // 如果当前选中的是这个图片，清除选中状态
+  if (currentImageId.value === imageId) {
+    currentImageId.value = null;
+    selectedElementId.value = null;
+  }
+  
+  // 删除相关的边界框
+  drawElements.value = drawElements.value.filter(el => {
+    const element = document.getElementById(el.id);
+    if (element && element.classList.contains('element-box')) {
+      const relatedImage = document.getElementById(imageId);
+      if (!relatedImage) {
+        element.remove();
+        return false;
+      }
+    }
+    return true;
+  });
+};
+
+// 计算图片样式
+const getImageStyle = (image) => {
+  if (!image.originalWidth || !image.originalHeight) return {};
+  
+  const ratio = image.originalWidth / image.originalHeight;
+  if (ratio > 1) {
+    return {
+      width: '100%',
+      height: 'auto',
+      position: 'absolute',
+      top: '50%',
+      transform: 'translateY(-50%)'
+    };
+  } else {
+    return {
+      width: 'auto',
+      height: '100%',
+      position: 'absolute',
+      left: '50%',
+      transform: 'translateX(-50%)'
+    };
+  }
+};
+
+// 添加分割图片到图表
 const addSegmentToChart = (image) => {
+  console.log('Adding segment to chart:', image);
   const svg = d3.select('#chartCanvas svg');
   const imageId = `segment-${Date.now()}`;
   
-  const imageElement = svg.append('image')
+  svg.append('image')
     .attr('id', imageId)
     .attr('x', 50)
     .attr('y', 50)
     .attr('width', image.originalWidth || 100)
     .attr('height', image.originalHeight || 100)
     .attr('href', image.url)
-    .attr('opacity', 0.1);
-    
-  imageElement.transition()
-    .duration(500)
-    .attr('opacity', 1);
-  
-  imageElement.on('mouseover', () => {
-    targetType.value = 'image';
-    const imageBBox = imageElement.node().getBoundingClientRect();
-    if (!isDragging.value && !isResizing.value) {
-      const boundingBox = createBoundingBox({
-        x: imageBBox.x,
-        y: imageBBox.y,
-        width: imageBBox.width,
-        height: imageBBox.height,
-        index: drawElements.value.length,
-      });
-      drawElements.value.push(boundingBox);
-      selectedElementId.value = boundingBox.id;
-      currentImageId.value = imageId;
+    .attr('preserveAspectRatio', 'xMidYMid meet');
+
+  // 为新添加的图片添加hover效果
+  addHoverEffect();
+};
+
+// 删除分割图片
+const deleteSegmentImage = (imageId) => {
+  segmentedImages.value = segmentedImages.value.filter(img => img.id !== imageId);
+  saveSegmentsToLocalStorage();
+};
+
+// 保存到localStorage
+const saveSegmentsToLocalStorage = () => {
+  try {
+    localStorage.setItem('segmentedImages', JSON.stringify(segmentedImages.value));
+  } catch (error) {
+    console.error('保存到localStorage失败:', error);
+    if (error.name === 'QuotaExceededError') {
+      segmentedImages.value = segmentedImages.value.slice(-5);
+      localStorage.setItem('segmentedImages', JSON.stringify(segmentedImages.value));
     }
+  }
+};
+
+// 添加监听器以检查数据变化
+watch(segmentedImages, (newVal) => {
+  console.log('segmentedImages changed:', newVal.length);
+}, { deep: true });
+
+
+
+// 重新绑定事件监听器
+const rebindEventListeners = () => {
+  // 为所有图片重新绑定事件
+  const images = document.querySelectorAll('#chartCanvas svg image');
+  images.forEach(img => {
+    const imageId = img.getAttribute('id');
+    d3.select(img)
+      .on('contextmenu', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        deleteImage(imageId);
+      })
+      .on('mouseover', () => {
+        if (!isDragging.value && !isResizing.value) {
+          targetType.value = 'image';
+          const imageBBox = img.getBoundingClientRect();
+          const boundingBox = createBoundingBox({
+            x: imageBBox.x,
+            y: imageBBox.y,
+            width: imageBBox.width,
+            height: imageBBox.height,
+            index: drawElements.value.length,
+          });
+          drawElements.value.push(boundingBox);
+          selectedElementId.value = boundingBox.id;
+          currentImageId.value = imageId;
+        }
+      });
   });
+};
+
+// 添加删除 SVG 的函数
+const deleteSvg = (svgId) => {
+  svgFiles.value = svgFiles.value.filter(svg => svg.id !== svgId);
+  localStorage.setItem('savedSvgs', JSON.stringify(svgFiles.value));
 };
 
 </script>
@@ -885,46 +1112,96 @@ const addSegmentToChart = (image) => {
 </style>
 
 <style scoped>
+/* 统一的卡片和图片容器样式 */
+.square-card {
+  position: relative;
+  width: 100%;
+  padding-bottom: 100%; /* 创建正方形容器 */
+  background-color: white;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.image-container {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+}
+
+/* 统一的图片样式 */
+.square-image,
+.segment-image {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.square-image :deep(.v-img__img),
+.segment-image :deep(.v-img__img) {
+  object-fit: contain !important;
+}
+
+/* 布局样式 */
 .right-sidebar {
-  width: 25%;
+  width: 20%;
   display: flex;
   flex-direction: column;
   border-left: 1px solid rgba(0, 0, 0, 0.12);
+  background-color: #f5f5f5;
+  overflow: hidden;
 }
 
 .upper-section,
 .middle-section {
   flex-shrink: 0;
   height: 40%;
-  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
   border-bottom: 1px solid rgba(0, 0, 0, 0.12);
 }
 
-.lower-section {
-  flex-grow: 1;
+.section-title {
+  flex-shrink: 0;
+  padding: 12px 16px;
+  font-size: 16px;
+  font-weight: 500;
+  color: rgba(0, 0, 0, 0.87);
+  background-color: #e0e0e0;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.12);
+}
+
+.v-container {
+  flex: 1;
   overflow-y: auto;
 }
 
-.section-title {
-  font-weight: 500;
-  color: rgba(0, 0, 0, 0.87);
-  background-color: #f5f5f5;
+/* 滚动条样式 */
+.v-container::-webkit-scrollbar {
+  width: 6px;
 }
 
-.segment-image-card {
-  position: relative;
-  overflow: hidden;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.v-container::-webkit-scrollbar-thumb {
+  background-color: rgba(0, 0, 0, 0.2);
+  border-radius: 3px;
 }
 
-.image-container {
-  position: relative;
-  width: 100%;
-  height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.v-container::-webkit-scrollbar-track {
+  background-color: rgba(0, 0, 0, 0.1);
+}
+
+/* 删除按钮样式 */
+.delete-btn {
+  position: absolute !important;
+  top: 4px;
+  right: 4px;
+  z-index: 1;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.image-container:hover .delete-btn {
+  opacity: 1;
 }
 </style>

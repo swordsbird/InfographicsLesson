@@ -242,7 +242,7 @@ const getBoxType = (type) => {
 const getElementStyle = (element, selectedElementId) => {
   const elementId = element.id;
   // console.log("selectedElementId", selectedElementId);
-  // const isSelected = selectedElementId.value === elementId;
+  const isSelected = selectedElementId === elementId;
   
   // 基础样式，移除边框和背景相关样式
   return {
@@ -250,6 +250,7 @@ const getElementStyle = (element, selectedElementId) => {
     top: `${element.y}px`,
     width: `${element.width}px`,
     height: `${element.height}px`,
+    cursor: isSelected ? 'grabbing' : 'grab',
   };
 };
 
