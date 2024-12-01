@@ -1,6 +1,19 @@
 <template>
   <!-- 主内容区 -->
   <v-main class="bg-grey-lighten-4 main-container">
+    <div 
+      v-if="analyzing || queryImageStatus" 
+      class="loading-overlay"
+    >
+      <v-progress-circular
+        indeterminate
+        color="primary"
+        size="64"
+      ></v-progress-circular>
+      <div class="loading-text mt-4">
+        {{ analyzing ? '正在检测视觉元素...' : '正在生成解释...' }}
+      </div>
+    </div>
     <div class="content-wrapper">
       <!-- 左侧边栏 - 20% -->
       <div class="left-sidebar">
@@ -11,7 +24,7 @@
               v-model="searchQuery"
               prepend-inner-icon="mdi-magnify"
               variant="outlined"
-              placeholder="搜索图片"
+              placeholder="搜索图表"
               hide-details
               density="comfortable"
               bg-color="white"
@@ -73,7 +86,7 @@
             variant="tonal"
             @click="toggleElementsVisibility"
             :color="elementsVisible ? 'dark' : 'grey'"
-            style="position: fixed; top: 80px; right: calc(20% + 30px); z-index: 100;"
+            style="position: fixed; top: 80px; right: calc(25% + 30px); z-index: 100;"
           ></v-btn>
         </div>
 
@@ -84,81 +97,90 @@
           @dblclick="handleCanvasDoubleClick"
           @click="selectElement($event, null)"
         >
-          <v-img
-            :src="selectedImage"
-            cover
-            ref="canvasImage"
-            class="canvas-image"
-            :draggable="false"
-            @load="handleImageLoad"
-          ></v-img>
-          <!-- 渲染所有可绘制元素 -->
-          <template v-for="(element, index) in drawElements" :key="element.id">
-            <!-- 元素内容 -->
-            <div 
-              class="draw-element"
-              :class="{
-                'selected': selectedElementId === element.id,
-                'text-element': element.type === ELEMENT_TYPES.TEXT,
-                'pictogram-element': element.type === ELEMENT_TYPES.PICTOGRAM
-              }"
-              :data-index="element.index"
-              :style="getElementStyle(element)"
-            >
-              <!-- 标题栏 - 可拖动 -->
-              <div 
-                class="element-title"
-                v-if="elementsVisible"
-                :style="{ 'background-color': getBoxType(element.type).labelBgColor }"
-                @mousedown="startTitleDrag($event, element.id)"
-              >
-                <span class="element-label">
-                  {{ element.id }}
-                </span>
-                <div class="delete-button" @click.stop="deleteElement(element)">
-                  <v-icon size="small" color="white">mdi-close</v-icon>
-                </div>
-              </div>
-              
-              <!-- 内容区域 -->
-              <div v-if="element.type === ELEMENT_TYPES.TEXT && isEditing && editingElementId === element.id"
-                class="text-content editing-text"
-                contenteditable="true"
-                @blur="saveTextEdit($event, element.id)"
-                @keydown.enter.prevent="saveTextEdit($event, element.id)"
-                :style="{
-                  color: element.style.color,
-                  fontSize: element.style.fontSize,
-                  fontWeight: element.style.fontWeight
-                }"
-                v-text="element.content"
-              ></div>
-              <div v-else-if="element.type === ELEMENT_TYPES.TEXT"
-                class="text-content"
-                @dblclick="handleTextDoubleClick($event, element.id)"
-                :style="{
-                  color: element.style.color,
-                  fontSize: element.style.fontSize,
-                  fontWeight: element.style.fontWeight
-                }"
-              >{{ element.content }}</div>
-              <div v-else-if="element.type === ELEMENT_TYPES.PICTOGRAM" 
-                class="pictogram-content" 
-                v-html="element.content">
-              </div>
-              <div class="resize-handle" @mousedown.stop="startResize($event, element.id)"></div>
-            </div>
+          <!-- 添加占位提示 -->
+          <div v-if="!selectedImage" class="canvas-placeholder">
+            <v-icon size="64" color="grey">mdi-image-outline</v-icon>
+            <div class="placeholder-text">请在左边栏选择一张信息图表</div>
+          </div>
 
-            <!-- 独立的边框box -->
-            <div 
-              v-if="element.type === ELEMENT_TYPES.BOUNDING_BOX || elementsVisible"
-              class="element-box"
-              :class="{
-                'selected': selectedElementId === element.id,
-                'bounding-box': element.type === ELEMENT_TYPES.BOUNDING_BOX
-              }"
-              :style="getBoxStyle(element)"
-            ></div>
+          <!-- 原有的画布内容 -->
+          <template v-else>
+            <v-img
+              :src="selectedImage"
+              cover
+              ref="canvasImage"
+              class="canvas-image"
+              :draggable="false"
+              @load="handleImageLoad"
+            ></v-img>
+            <!-- 渲染所有可绘制元素 -->
+            <template v-for="(element, index) in drawElements" :key="element.id">
+              <!-- 元素内容 -->
+              <div 
+                class="draw-element"
+                :class="{
+                  'selected': selectedElementId === element.id,
+                  'text-element': element.type === ELEMENT_TYPES.TEXT,
+                  'pictogram-element': element.type === ELEMENT_TYPES.PICTOGRAM
+                }"
+                :data-index="element.index"
+                :style="getElementStyle(element)"
+              >
+                <!-- 标题栏 - 可拖动 -->
+                <div 
+                  class="element-title"
+                  v-if="elementsVisible"
+                  :style="{ 'background-color': getBoxType(element.type).labelBgColor }"
+                  @mousedown="startTitleDrag($event, element.id)"
+                >
+                  <span class="element-label">
+                    {{ element.id }}
+                  </span>
+                  <div class="delete-button" @click.stop="deleteElement(element)">
+                    <v-icon size="small" color="white">mdi-close</v-icon>
+                  </div>
+                </div>
+                
+                <!-- 内容区域 -->
+                <div v-if="element.type === ELEMENT_TYPES.TEXT && isEditing && editingElementId === element.id"
+                  class="text-content editing-text"
+                  contenteditable="true"
+                  @blur="saveTextEdit($event, element.id)"
+                  @keydown.enter.prevent="saveTextEdit($event, element.id)"
+                  :style="{
+                    color: element.style.color,
+                    fontSize: element.style.fontSize,
+                    fontWeight: element.style.fontWeight
+                  }"
+                  v-text="element.content"
+                ></div>
+                <div v-else-if="element.type === ELEMENT_TYPES.TEXT"
+                  class="text-content"
+                  @dblclick="handleTextDoubleClick($event, element.id)"
+                  :style="{
+                    color: element.style.color,
+                    fontSize: element.style.fontSize,
+                    fontWeight: element.style.fontWeight
+                  }"
+                >{{ element.content }}</div>
+                <div v-else-if="element.type === ELEMENT_TYPES.PICTOGRAM" 
+                  class="pictogram-content" 
+                  v-html="element.content">
+                </div>
+                <div class="resize-handle" @mousedown.stop="startResize($event, element.id)"></div>
+              </div>
+
+              <!-- 独立的边框box -->
+              <div 
+                v-if="element.type === ELEMENT_TYPES.BOUNDING_BOX || elementsVisible"
+                class="element-box"
+                :class="{
+                  'selected': selectedElementId === element.id,
+                  'bounding-box': element.type === ELEMENT_TYPES.BOUNDING_BOX
+                }"
+                :style="getBoxStyle(element)"
+              ></div>
+            </template>
           </template>
         </div>
       </div>
@@ -168,6 +190,7 @@
         <!-- 工具栏 -->
         <div class="toolbox">
           <div class="toolbox-content">
+            <div class="text-white text-subtitle-1 mb-4">添加/编辑元素</div>
             <v-btn-toggle v-model="currentMode">
               <!-- 工具选择 -->
                 <v-btn 
@@ -182,6 +205,7 @@
                 >
                   <v-icon>mdi-format-text</v-icon>
                 </v-btn>
+                <!--
                 <v-btn
                   :value="ELEMENT_TYPES.PICTOGRAM"
                   :class="{ 'active': currentMode === ELEMENT_TYPES.PICTOGRAM }"
@@ -194,6 +218,7 @@
                 >
                   <v-icon>mdi-shape</v-icon>
                 </v-btn>
+                -->
               </v-btn-toggle>
             
             
@@ -275,27 +300,10 @@
             :loading="analyzing"
             @click="analyzeImage"
           >
-            开始分析
+            检测元素
           </v-btn>
           <!-- 添加 prompt 输入框 -->
-          <textarea
-            v-model="customPrompt"
-            placeholder="请输入提示词，用于指导信息图理解"
-            rows="6"
-            class="prompt-textarea"
-          ></textarea>
-          <!-- 添加导出按钮 -->
-          <v-btn
-            color="dark"
-            density="comfortable"
-            class="mb-2 mx-2"
-            :loading="queryImageStatus"
-            @click="queryImage"
-          >
-            开始查询
-          </v-btn>
-
-          <div class="detection-list">
+          <div class="detection-list" style="max-height: 150px; overflow-y: auto;">
             <!-- 检测结果列表 -->
             <v-chip
               v-for="(box, index) in drawElements"
@@ -309,6 +317,25 @@
               {{ `${SHORT_ELEMENT_TYPES[box.type]}${box.index}` }}
             </v-chip>
           </div>
+          <div class="divider my-2" style="border-top: 1px solid rgba(0, 0, 0, 0.12);"></div>
+          <textarea
+            v-model="customPrompt"
+            placeholder="请输入提示词，用于指导信息图理解"
+            rows="8"
+            class="prompt-textarea"
+          ></textarea>
+          <!-- 添加导出按钮 -->
+          <v-btn
+            color="dark"
+            density="comfortable"
+            class="mb-2 mx-2"
+            :loading="queryImageStatus"
+            :disabled="!drawElements.some(el => el.type === ELEMENT_TYPES.BOUNDING_BOX)"
+            @click="queryImage"
+          >
+            生成解释
+          </v-btn>
+
         </div>
       </div>
     </div>
@@ -392,8 +419,8 @@ const queryImageStatus = ref(false);
 const elementsVisible = ref(true);
 // 颜色选项简化为圆形选择器
 const TEXT_COLORS = [
-  { value: '#FFFFFF' }, // 白色
   { value: '#000000' }, // 黑色
+  { value: '#FFFFFF' }, // 白色
   { value: '#1f77b4' }, // 蓝色
   { value: '#ff7f0e' }, // 橙色
   { value: '#2ca02c' }, // 绿色
@@ -1055,16 +1082,20 @@ const queryImage = async () => {
   ctx.drawImage(imageElement, 0, 0);
 
   // 计算缩放比例
-  const scaleX = imageElement.naturalWidth / canvasRef.value.offsetWidth;
-  const scaleY = imageElement.naturalHeight / canvasRef.value.offsetHeight;
+  const scaleX = imageElement.naturalWidth / canvasImage.value.$el.offsetWidth;
+  const scaleY = imageElement.naturalHeight / canvasImage.value.$el.offsetHeight;
+  const rect = canvasImage.value.$el.getBoundingClientRect();
+  const canvasRect = canvasRef.value.getBoundingClientRect();
+  const offsetX = rect.left - canvasRect.left;
+  const offsetY = rect.top - canvasRect.top;
 
   // 绘制所有bounding boxes
   ctx.lineWidth = 2;
   drawElements.value.forEach(element => {
     if (element.type === ELEMENT_TYPES.BOUNDING_BOX) {
       // 转换坐标和尺寸到实际图片大小
-      const scaledX = element.x * scaleX;
-      const scaledY = element.y * scaleY;
+      const scaledX = (element.x - offsetX) * scaleX;
+      const scaledY = (element.y - offsetY) * scaleY;
       const scaledWidth = element.width * scaleX;
       const scaledHeight = element.height * scaleY;
 
@@ -1073,11 +1104,22 @@ const queryImage = async () => {
       ctx.strokeWidth = 8;
       // 在矩形中心绘制索引文本
       ctx.fillStyle = 'red';
-      ctx.font = '48px Arial';
+      ctx.font = '24px Arial';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      const centerX = scaledX + scaledWidth / 2;
-      const centerY = scaledY + scaledHeight / 2;
+      const centerX = scaledX + 20;
+      const centerY = scaledY + 20;
+      
+      // 绘制背景圆
+      ctx.beginPath();
+      ctx.arc(centerX, centerY, 15, 0, Math.PI * 2);
+      ctx.fillStyle = 'white';
+      ctx.fill();
+      ctx.strokeStyle = 'red';
+      ctx.stroke();
+      
+      // 设置文本颜色
+      ctx.fillStyle = 'red';
       ctx.fillText(element.index.toString(), centerX, centerY);
       // 绘制矩形
       ctx.strokeRect(scaledX, scaledY, scaledWidth, scaledHeight);
@@ -1085,10 +1127,10 @@ const queryImage = async () => {
   });
 
   const dataUrl = tempCanvas.toDataURL('image/png');
-  const link = document.createElement('a');
-  //link.download = `annotated_${Date.now()}.png`;
-  //link.href = dataUrl;
-  //link.click();
+  // const link = document.createElement('a');
+  // link.download = `annotated_${Date.now()}.png`;
+  // link.href = dataUrl;
+  // link.click();
 
   try {
     const result = await analyzeWithOpenAI(dataUrl, customPrompt.value);
@@ -1144,8 +1186,8 @@ const queryImage = async () => {
           };
           const elementWidth = 200;
           drawElements.value.push(createTextElement({
-            x: boundingBox.x,
-            y: boundingBox.y + boundingBox.height + 10,
+            x: boundingBox.x + boundingBox.width / 2 - elementWidth / 2,
+            y: boundingBox.y + boundingBox.height / 2 + 10,
             width: elementWidth,
             height: calculateTextHeight(element.content, elementWidth, elementStyle),
             index: drawElements.value.length,

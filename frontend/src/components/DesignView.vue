@@ -462,6 +462,13 @@ const loadSvg = async (svgFile) => {
     const svgText = await response.text();
     const chartCanvas = document.getElementById('chartCanvas');
     chartCanvas.innerHTML = svgText;
+    // Add non-selectable attribute to SVG
+    const svg = d3.select('#chartCanvas svg');
+    svg.selectAll('text')
+       .style('user-select', 'none')
+       .style('-webkit-user-select', 'none')
+       .style('-moz-user-select', 'none')
+       .style('-ms-user-select', 'none');
     addHoverEffect();
   } catch (error) {
     console.error('Error loading SVG:', error);

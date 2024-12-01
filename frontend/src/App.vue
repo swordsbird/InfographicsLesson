@@ -43,7 +43,7 @@ import SegmentView from './components/SegmentView.vue';
 export default {
   name: 'App',
   data: () => ({
-    activeTab: 'segment',
+    activeTab: 'understand',
   }),
 }
 </script>
