@@ -50,6 +50,8 @@
     cursor: crosshair;
     user-select: none;
     padding: 16px;
+    padding-top: 32px;
+    padding-bottom: 32px;
   }
   
   .canvas-image {
