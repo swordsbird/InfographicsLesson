@@ -99,7 +99,7 @@
                       <div class="flex-grow-1">
                         <v-img
                           cover
-                          height="150"
+                          height="100"
                           :src="svg.url"
                         ></v-img>
                       </div>
@@ -207,14 +207,16 @@
       <div class="right-sidebar">
         <div class="upper-section">
           <!-- 添加标题和上传按钮 -->
-          <div class="section-title pa-2 d-flex align-center justify-space-between">
-            <span>已有图标</span>
-            <v-btn
-              icon="mdi-upload"
-              size="small"
-              @click="$refs.fileInput.click()"
-              class="ml-2"
-            ></v-btn>
+          <div class="section-title pa-2 d-flex align-center">
+            <span class="d-flex align-center">
+              已有图标 ({{ allPictograms.length }})
+              <v-btn
+                icon="mdi-upload"
+                size="small"
+                @click="$refs.fileInput.click()"
+                class="ml-1"
+              ></v-btn>
+            </span>
           </div>
 
           <!-- 隐藏的文件输入框 -->
@@ -229,7 +231,7 @@
           
           <v-container class="pa-4">
             <v-row dense>
-              <v-col v-for="pictogram in allPictograms" :key="pictogram.id" cols="6" class="mb-2">
+              <v-col v-for="pictogram in allPictograms" :key="pictogram.id" cols="3" class="mb-2">
                 <div class="square-card">
                   <div class="image-container">
                     <v-img
@@ -316,7 +318,7 @@ const chartTypes = ref([
   { text: 'Scatter Plot', value: 'Scatter Plot', icon: 'mdi-chart-scatter-plot' }
 ]); // 图表类型列表
 const selectedChartType = ref(''); // 用户选中的图类型
-const chartData = ref(null); // 用于存储加载的 JSON 数据
+const chartData = ref(null); // 用���存储加载的 JSON 数据
 const svgFiles = ref([]); // SVG 文件列表
 const isResizing = ref(false);
 const isDragging = ref(false);
@@ -619,7 +621,7 @@ const clearInteractions = () => {
 };
 
 const addHoverEffect = () => {
-  clearInteractions(); // 清除所有交互功能
+  clearInteractions();
   
   const addBoundingBoxEffect = (elementId, titleId) => {
     const element = d3.select(`#${elementId}`);
@@ -720,10 +722,12 @@ const addHoverEffect = () => {
   } else {
     // 编辑模式下添加边界框效果
     addBoundingBoxEffect('chart', null);
-    // 为图片元素添加边界框效果
-    segmentedImages.value.forEach(image => {
-      if (document.getElementById(image.id)) {
-        addBoundingBoxEffect(image.id, null);
+    
+    // 所有图片元素添加边界框效果（包括分割图像）
+    d3.selectAll('#chartCanvas svg image').each(function() {
+      const imageId = this.getAttribute('id');
+      if (imageId) {
+        addBoundingBoxEffect(imageId, null);
       }
     });
   }
@@ -1067,14 +1071,42 @@ const addSegmentToChart = (image) => {
   const svg = d3.select('#chartCanvas svg');
   const imageId = `segment-${Date.now()}`;
   
-  svg.append('image')
+  // 添加图片元素并绑定事件
+  const imageElement = svg.append('image')
     .attr('id', imageId)
+    .attr('data-element-id', imageId) // 添加data属性用于选择
     .attr('x', 50)
     .attr('y', 50)
     .attr('width', image.originalWidth || 100)
     .attr('height', image.originalHeight || 100)
     .attr('href', image.url)
     .attr('preserveAspectRatio', 'xMidYMid meet');
+
+  // 绑定右键删除事件
+  imageElement.on('contextmenu', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    deleteImage(imageId);
+    return false;
+  });
+
+  // 绑定hover事件以显示边界框
+  imageElement.on('mouseover', () => {
+    targetType.value = 'image';
+    const imageBBox = imageElement.node().getBoundingClientRect();
+    if (!isDragging.value && !isResizing.value) {
+      const boundingBox = createBoundingBox({
+        x: imageBBox.x,
+        y: imageBBox.y,
+        width: imageBBox.width,
+        height: imageBBox.height,
+        index: drawElements.value.length,
+      });
+      drawElements.value.push(boundingBox);
+      selectedElementId.value = boundingBox.id;
+      currentImageId.value = imageId;
+    }
+  });
 
   // 为新添加的图片添加hover效果
   addHoverEffect();
@@ -1249,7 +1281,7 @@ const allPictograms = computed(() => {
 
 /* 布局样式 */
 .right-sidebar {
-  width: 20%;
+  width: 25%;
   display: flex;
   flex-direction: column;
   border-left: 1px solid rgba(0, 0, 0, 0.12);
