@@ -302,7 +302,6 @@
           >
             检测元素
           </v-btn>
-          <!-- 添加 prompt 输入框 -->
           <div class="detection-list" style="max-height: 150px; overflow-y: auto;">
             <!-- 检测结果列表 -->
             <v-chip
@@ -319,9 +318,15 @@
           </div>
           <div class="divider my-2" style="border-top: 1px solid rgba(0, 0, 0, 0.12);"></div>
           <textarea
-            v-model="customPrompt"
+            v-model="customOverallPrompt"
             placeholder="请输入提示词，用于指导信息图理解"
-            rows="8"
+            rows="6"
+            class="prompt-textarea"
+          ></textarea>
+          <textarea
+            v-model="customBoxPrompt"
+            placeholder="请输入提示词，用于指导信息图理解"
+            rows="6"
             class="prompt-textarea"
           ></textarea>
           <!-- 添加导出按钮 -->
@@ -344,7 +349,7 @@
 <script setup>
 import { ref, onMounted, onUnmounted, onBeforeUnmount, watch, nextTick, computed } from 'vue';
 import { VueDraggableNext } from 'vue-draggable-next'
-import { analyzeWithOpenAI, defaultQueryPrompt } from './utils/llm';
+import { analyzeWithOpenAI, defaultOverallPrompt, defaultBoxPrompt } from './utils/llm';
 import { createBaseElement, createTextElement, createPictogramElement, createBoundingBox, ELEMENT_TYPES, SHORT_ELEMENT_TYPES } from './utils/elements';
 import { SEGMENT_API, SEGMENT_BOX_API } from './utils/OPENAI_API';
 // 使用 glob 导入所有图片
@@ -372,7 +377,8 @@ const images = ref(
 
 const selectedImage = ref('');
 const fileInput = ref(null);
-const customPrompt = ref(defaultQueryPrompt);
+const customOverallPrompt = ref(defaultOverallPrompt);
+const customBoxPrompt = ref(defaultBoxPrompt);
 // 触发文件选择
 const triggerFileInput = () => {
   fileInput.value.click();
@@ -1070,83 +1076,57 @@ const queryImage = async () => {
     return;
   }
 
-  // 创建临时canvas
-  const tempCanvas = document.createElement('canvas');
-  const ctx = tempCanvas.getContext('2d');
+  const maxWidth = 1200;
+  const maxHeight = 1200;
+  const ratio = Math.min(maxWidth / imageElement.naturalWidth, maxHeight / imageElement.naturalHeight);
 
-  // 设置临时canvas尺寸为图片实际尺寸
-  tempCanvas.width = imageElement.naturalWidth;
-  tempCanvas.height = imageElement.naturalHeight;
 
-  // 绘制原始图片
-  ctx.drawImage(imageElement, 0, 0);
+  const boxes = drawElements.value.filter(element => element.type === ELEMENT_TYPES.BOUNDING_BOX);
+  const numBoxes = boxes.length;
+  for (let i = -1; i < numBoxes; i++) {
+    const tempCanvas = document.createElement('canvas');
+    const ctx = tempCanvas.getContext('2d');
+    tempCanvas.width = imageElement.naturalWidth * ratio;
+    tempCanvas.height = imageElement.naturalHeight * ratio;
+    ctx.drawImage(imageElement, 0, 0, tempCanvas.width, tempCanvas.height);
 
-  // 计算缩放比例
-  const scaleX = imageElement.naturalWidth / canvasImage.value.$el.offsetWidth;
-  const scaleY = imageElement.naturalHeight / canvasImage.value.$el.offsetHeight;
-  const rect = canvasImage.value.$el.getBoundingClientRect();
-  const canvasRect = canvasRef.value.getBoundingClientRect();
-  const offsetX = rect.left - canvasRect.left;
-  const offsetY = rect.top - canvasRect.top;
+    ctx.lineWidth = 2;
 
-  // 绘制所有bounding boxes
-  ctx.lineWidth = 2;
-  drawElements.value.forEach(element => {
-    if (element.type === ELEMENT_TYPES.BOUNDING_BOX) {
+    const scaleX = imageElement.naturalWidth / canvasImage.value.$el.offsetWidth * ratio;
+    const scaleY = imageElement.naturalHeight / canvasImage.value.$el.offsetHeight * ratio;
+    const rect = canvasImage.value.$el.getBoundingClientRect();
+    const canvasRect = canvasRef.value.getBoundingClientRect();
+    const offsetX = rect.left - canvasRect.left;
+    const offsetY = rect.top - canvasRect.top;
+
+    if (i === -1) {
+      //
+    } else {
+      const box = boxes[i];
       // 转换坐标和尺寸到实际图片大小
-      const scaledX = (element.x - offsetX) * scaleX;
-      const scaledY = (element.y - offsetY) * scaleY;
-      const scaledWidth = element.width * scaleX;
-      const scaledHeight = element.height * scaleY;
-
-      // 设置绘制样式
-      ctx.strokeStyle = 'red';
-      ctx.strokeWidth = 8;
-      // 在矩形中心绘制索引文本
-      ctx.fillStyle = 'red';
-      ctx.font = '24px Arial';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      const centerX = scaledX + 20;
-      const centerY = scaledY + 20;
-      
-      // 绘制背景圆
-      ctx.beginPath();
-      ctx.arc(centerX, centerY, 15, 0, Math.PI * 2);
-      ctx.fillStyle = 'white';
-      ctx.fill();
-      ctx.strokeStyle = 'red';
-      ctx.stroke();
-      
-      // 设置文本颜色
-      ctx.fillStyle = 'red';
-      ctx.fillText(element.index.toString(), centerX, centerY);
-      // 绘制矩形
+      const scaledX = (box.x - offsetX) * scaleX;
+      const scaledY = (box.y - offsetY) * scaleY;
+      const scaledWidth = box.width * scaleX;
+      const scaledHeight = box.height * scaleY;
       ctx.strokeRect(scaledX, scaledY, scaledWidth, scaledHeight);
     }
-  });
 
-  const dataUrl = tempCanvas.toDataURL('image/png');
-  // const link = document.createElement('a');
-  // link.download = `annotated_${Date.now()}.png`;
-  // link.href = dataUrl;
-  // link.click();
-
-  try {
-    const result = await analyzeWithOpenAI(dataUrl, customPrompt.value);
-
-    if (result && result.length > 0) {
-      const { title, description, elements } = result[0];
+    const dataUrl = tempCanvas.toDataURL('image/png');
+    
+    if (i === -1) {
+      const result = await analyzeWithOpenAI(dataUrl, customOverallPrompt.value);
+      const { title, description } = result;
       
       // 添加标题文本框
       const titleStyle = {
         fontSize: FONT_SIZES.find(size => size.label === 'Extra Large').value,
         fontWeight: 'bold',
-        color: TEXT_COLORS[0].value
+        color: currentTextStyle.value.color
       };
       const titleWidth = 400;
+      console.log("imageElement.naturalWidth", imageElement.naturalWidth)
       drawElements.value.push(createTextElement({
-        x: 20,
+        x: imageElement.naturalWidth * 0.75 - titleWidth / 2,
         y: 20,
         width: titleWidth,
         height: calculateTextHeight(title, titleWidth, titleStyle),
@@ -1158,12 +1138,12 @@ const queryImage = async () => {
       // 添加描述文本框
       const descStyle = {
         fontSize: FONT_SIZES.find(size => size.label === 'Middle').value,
-        color: TEXT_COLORS[0].value
+        color: currentTextStyle.value.color
       };
       const descWidth = 600;
       const titleHeight = calculateTextHeight(title, titleWidth, titleStyle);
       drawElements.value.push(createTextElement({
-        x: 20,
+        x: imageElement.naturalWidth * 0.75 - descWidth / 2,
         y: 40 + titleHeight,
         width: descWidth,
         height: calculateTextHeight(description, descWidth, descStyle),
@@ -1171,36 +1151,32 @@ const queryImage = async () => {
         content: description,
         style: descStyle
       }));
-      
-      // 为每个 boundingBox 添加对应的解释文本
-      elements.forEach(element => {
-        const boundingBox = drawElements.value.find(box => 
-          box.type === ELEMENT_TYPES.BOUNDING_BOX && 
-          box.index === element.index
-        );
-        
-        if (boundingBox) {
-          const elementStyle = {
-            fontSize: FONT_SIZES.find(size => size.label === 'Middle').value,
-            color: TEXT_COLORS[0].value
-          };
-          const elementWidth = 200;
-          drawElements.value.push(createTextElement({
-            x: boundingBox.x + boundingBox.width / 2 - elementWidth / 2,
-            y: boundingBox.y + boundingBox.height / 2 + 10,
-            width: elementWidth,
-            height: calculateTextHeight(element.content, elementWidth, elementStyle),
-            index: drawElements.value.length,
-            content: element.content,
-            style: elementStyle
-          }));
-        }
-      });
+    } else {
+      const box = boxes[i];
+      const result = await analyzeWithOpenAI(dataUrl, customBoxPrompt.value);
+      const { content } = result;
+      const elementStyle = {
+        fontSize: FONT_SIZES.find(size => size.label === 'Middle').value,
+        color: currentTextStyle.value.color
+      };
+      const elementWidth = 200;
+      drawElements.value.push(createTextElement({
+        x: box.x + box.width / 2 - elementWidth / 2,
+        y: box.y + box.height / 2 + 10,
+        width: elementWidth,
+        height: calculateTextHeight(content, elementWidth, elementStyle),
+        index: drawElements.value.length,
+        content: content,
+        style: elementStyle
+      }));
     }
-  } catch (error) {
-    console.error('Failed to process analysis result:', error);
-    alert('处理分析结果失败');
   }
+
+  // const link = document.createElement('a');
+  // link.download = `annotated_${Date.now()}.png`;
+  // link.href = dataUrl;
+  // link.click();
+
   queryImageStatus.value = false;
 }
 
