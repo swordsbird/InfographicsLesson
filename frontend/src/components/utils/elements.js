@@ -1,18 +1,18 @@
-
-
 // 元素类型常量
 const ELEMENT_TYPES = {
     BOUNDING_BOX: 'boundingBox',
     TEXT: 'text',
     PICTOGRAM: 'pictogram',
-    OTHER: 'other'
+    OTHER: 'other',
+    CIRCLE: 'circle'
   };
   
 const SHORT_ELEMENT_TYPES = {
   [ELEMENT_TYPES.BOUNDING_BOX]: 'BB',
   [ELEMENT_TYPES.TEXT]: 'TEXT',
   [ELEMENT_TYPES.PICTOGRAM]: 'ICON',
-  [ELEMENT_TYPES.OTHER]: 'OTHER'
+  [ELEMENT_TYPES.OTHER]: 'OTHER',
+  [ELEMENT_TYPES.CIRCLE]: 'CIRCLE'
 };
 
 const getShortId = () => {
@@ -253,4 +253,14 @@ const getElementStyle = (element, selectedElementId) => {
   };
 };
 
-export { createBaseElement, createTextElement, createPictogramElement, createBoundingBox, ELEMENT_TYPES, SHORT_ELEMENT_TYPES, getShortId, getBoxStyle, getBoxType , getElementStyle };
+// 创建圆形的函数
+const createCircle = ({ x, y, radius = 5, index }) => ({
+  id: `circle-${Date.now()}-${index}`,
+  type: ELEMENT_TYPES.CIRCLE,
+  x: x - radius, // 调整x坐标使圆心在点击位置
+  y: y - radius, // 调整y坐标使圆心在点击位置
+  width: radius * 2,
+  height: radius * 2,
+});
+
+export { createBaseElement, createTextElement, createPictogramElement, createBoundingBox, ELEMENT_TYPES, SHORT_ELEMENT_TYPES, getShortId, getBoxStyle, getBoxType , getElementStyle, createCircle };

@@ -194,6 +194,7 @@
                   :src="path"
                   @click="addImageToChart(path)"
                 ></v-img>
+                <div class="text-center">{{ processPath(path) }}</div>
               </v-col>
             </v-row>
           </v-container>
@@ -734,6 +735,10 @@ const startDrag = (event, id, targetType = 'element') => {
   dragInitTransform.value = targetElement.getAttribute('transform');
   document.addEventListener('mousemove', (e) => handleDrag(e, targetType));
   document.addEventListener('mouseup', stopDrag);
+};
+
+const processPath = (path) => {
+  return path.replace('pictogram/', '');
 };
 
 const handleDrag = (event, targetType) => {

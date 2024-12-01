@@ -3,9 +3,8 @@ import Components from 'unplugin-vue-components/vite'
 import Vue from '@vitejs/plugin-vue'
 import Vuetify, { transformAssetUrls } from 'vite-plugin-vuetify'
 import ViteFonts from 'unplugin-fonts/vite'
+import { defineConfig } from 'vite'  // 添加这行导入
 
-// Utilities
-import { defineConfig } from 'vite'
 import { fileURLToPath, URL } from 'node:url'
 
 // https://vitejs.dev/config/
@@ -14,7 +13,6 @@ export default defineConfig({
     Vue({
       template: { transformAssetUrls }
     }),
-    // https://github.com/vuetifyjs/vuetify-loader/tree/master/packages/vite-plugin#readme
     Vuetify(),
     Components(),
     ViteFonts({
@@ -43,6 +41,18 @@ export default defineConfig({
   },
   server: {
     port: 3000,
+    headers: {
+      'Cross-Origin-Embedder-Policy': 'require-corp',
+      'Cross-Origin-Opener-Policy': 'same-origin',
+    },
+    middlewares: [
+      (req, res, next) => {
+        if (req.url.endsWith('.wasm')) {
+          res.setHeader('Content-Type', 'application/wasm');
+        }
+        next();
+      }
+    ]
   },
   css: {
     preprocessorOptions: {
@@ -51,4 +61,17 @@ export default defineConfig({
       },
     },
   },
+  optimizeDeps: {
+    exclude: ['onnxruntime-web'],
+    esbuildOptions: {
+      target: 'esnext'
+    }
+  },
+  build: {
+    target: 'esnext',
+    rollupOptions: {
+      external: ['onnxruntime-web']
+    }
+  },
+  assetsInclude: ['**/*.wasm'],
 })
