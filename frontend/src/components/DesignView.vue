@@ -191,11 +191,13 @@
               <v-col v-for="(path, index) in pictogramPaths" :key="index" cols="3" class="mb-2">
                 <v-img
                   cover
-                  height="100"
+                  max-height="80"
+                  max-width="80"
                   :src="path"
                   @click="addImageToChart(path)"
+                  class="pa-4"
                 ></v-img>
-                <div class="text-center">{{ processPath(path) }}</div>
+                <!-- <div class="text-center">{{ processPath(path) }}</div> -->
               </v-col>
             </v-row>
           </v-container>

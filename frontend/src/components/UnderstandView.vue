@@ -376,11 +376,142 @@
           >
             生成解释
           </v-btn>
+          <div class="d-flex gap-2">
+            <v-btn
+              color="dark"
+              density="comfortable"
+              class="mb-2"
+              @click="showHowToInteractDialog = true"
+            >
+              如何交互？
+            </v-btn>
+            <v-btn
+              color="dark"
+              density="comfortable" 
+              class="mb-2"
+              @click="showHowToModifyDialog = true"
+            >
+              如何修改代码？
+            </v-btn>
+          </div>
 
         </div>
       </div>
     </div>
   </v-main>
+<v-dialog v-model="showHowToInteractDialog" max-width="600px">
+  <v-card>
+    <v-card-title class="text-h5 pa-4">
+      如何交互使用？
+    </v-card-title>
+    <v-card-text class="pa-4">
+      <div class="text-body-1">
+        <p class="mb-4">本工具提供以下交互功能：</p>
+        
+        <p class="font-weight-bold mb-2">1. 图片管理</p>
+        <p class="mb-4">
+          • 左侧栏可以浏览和选择已有图片<br>
+          • 点击上传按钮可以添加新的图片<br>
+          • 搜索框可以快速查找图片
+        </p>
+
+        <p class="font-weight-bold mb-2">2. 元素检测</p>
+        <p class="mb-4">
+          • 点击"检测元素"自动识别图中的关键区域<br>
+          • 使用右上角的眼睛图标可以显示/隐藏标注框<br>
+          • 点击"清空元素"可以删除所有标注
+        </p>
+
+        <p class="font-weight-bold mb-2">3. 编辑标注框</p>
+        <p class="mb-4">
+          • 双击画布：创建新的标注框<br>
+          • 拖动标题栏：移动标注框位置<br>
+          • 拖动右下角：调整标注框大小<br>
+          • 点击关闭按钮：删除当前标注框<br>
+          这一步主要是为了纠正标注框位置，方便后续生成解释
+        </p>
+
+        <p class="font-weight-bold mb-2">4. 生成解释</p>
+        <p class="mb-4">
+          • 调整好标注框后点击"生成解释"<br>
+          • 系统会分析整体内容和每个标注区域<br>
+          • 自动生成标题、描述和详细解释
+        </p>
+
+        <p class="font-weight-bold mb-2">5. 编辑文本</p>
+        <p class="mb-4">
+          • 双击文本：进入编辑模式<br>
+          • 右侧工具栏：调整字体大小、颜色和粗细<br>
+          • 拖动文本框标题栏：调整文本位置<br>
+          • Enter键：完成编辑
+        </p>
+        <p class="text-caption">
+          提示：首次使用建议先查看"如何修改"了解详细的编辑功能
+        </p>
+      </div>
+    </v-card-text>
+    <v-card-actions class="pa-4">
+      <v-spacer></v-spacer>
+      <v-btn
+        color="dark"
+        variant="text"
+        @click="showHowToInteractDialog = false"
+      >
+        关闭
+      </v-btn>
+      </v-card-actions>
+    </v-card>
+  </v-dialog>
+  <v-dialog v-model="showHowToModifyDialog" max-width="600px">
+  <v-card>
+    <v-card-title class="text-h5 pa-4">
+      如何修改代码？
+    </v-card-title>
+    <v-card-text class="pa-4">
+      <div class="text-body-1">
+        <p class="mb-4">您可以通过以下方式修改提示词或者代码：</p>
+        
+        <p class="font-weight-bold mb-2">1. 修改提示词</p>
+        <p class="mb-4">
+          • 整体提示词：引导AI理解图表的整体主题和重点<br>
+          • 元素提示词：引导AI解读每个标注区域的具体内容<br>
+          • 点击"使用样例提示词"可以参考预设的提示语
+        </p>
+
+        <p class="font-weight-bold mb-2">2. 修改文本框出现位置</p>
+        <p class="mb-4">
+          在 src/components/UnderstandView.vue 中的 queryImage 函数（约1245-1345行）记录了文本框的位置计算逻辑：<br>
+          • 标题文本框：位于图片上方中央<br>
+          • 描述文本框：位于标题下方<br>
+          • 元素说明文本框：位于对应标注框下方<br><br>
+          同学可以通过修改这些计算逻辑来：<br>
+          • 调整文本框的初始位置<br>
+          • 优化文本布局算法<br>
+          • 设计防止文本框重叠的策略<br>
+          • 根据图片内容动态调整文本颜色：
+            - 分析标注框所在区域的背景颜色
+            - 深色背景区域使用白色文字
+            - 浅色背景区域使用黑色文字
+            - 可以使用 Canvas API 获取图片像素颜色
+        </p>
+
+        <p class="text-caption mt-4">
+          注意：修改后需要重新点击"生成解释"来更新AI分析结果。建议先调整好标注框位置再生成解释。
+        </p>
+      </div>
+    </v-card-text>
+    <v-card-actions class="pa-4">
+      <v-spacer></v-spacer>
+      <v-btn
+        color="dark"
+        variant="text"
+        @click="showHowToModifyDialog = false"
+      >
+        关闭
+      </v-btn>
+    </v-card-actions>
+  </v-card>
+  </v-dialog>
 </template>
 <script setup>
 import { ref, onMounted, onUnmounted, watch, nextTick, computed } from 'vue';
@@ -415,6 +546,9 @@ const imageRatio = ref(0);
 const fileInput = ref(null);
 const customOverallPrompt = ref("");
 const customBoxPrompt = ref("");
+const showHowToInteractDialog = ref(false);
+const showHowToModifyDialog = ref(false);
+
 // 触发文件选择
 const triggerFileInput = () => {
   fileInput.value.click();
@@ -1104,26 +1238,76 @@ const queryImage = async () => {
 
   const boxes = drawElements.value.filter(element => element.type === ELEMENT_TYPES.BOUNDING_BOX);
   const numBoxes = boxes.length;
-  for (let i = -1; i < numBoxes; i++) {
+  // 创建所有查询的 Promise 数组
+  const queryPromises = [];
+  
+  // 添加整体分析的 Promise
+  const overallAnalysis = async () => {
     const tempCanvas = document.createElement('canvas');
     const ctx = tempCanvas.getContext('2d');
     tempCanvas.width = imageElement.naturalWidth * ratio;
     tempCanvas.height = imageElement.naturalHeight * ratio;
 
     ctx.drawImage(imageElement, 0, 0, tempCanvas.width, tempCanvas.height);
-    ctx.lineWidth = 2;
+    const dataUrl = tempCanvas.toDataURL('image/png');
+    
+    const result = await analyzeWithOpenAI(dataUrl, customOverallPrompt.value);
+    const { title, description } = result;
+    
+    // 添加标题文本框
+    const titleStyle = {
+      fontSize: FONT_SIZES.find(size => size.label === 'Extra Large').value,
+      fontWeight: 'bold',
+      color: currentTextStyle.value.color
+    };
+    const titleWidth = 400;
 
-    const scaleX = imageElement.naturalWidth / canvasImage.value.$el.offsetWidth * ratio;
-    const scaleY = imageElement.naturalHeight / canvasImage.value.$el.offsetHeight * ratio;
-    const rect = canvasImage.value.$el.getBoundingClientRect();
-    const canvasRect = canvasRef.value.getBoundingClientRect();
-    const offsetX = rect.left - canvasRect.left;
-    const offsetY = rect.top - canvasRect.top;
+    drawElements.value.push(createTextElement({
+      x: imageElement.naturalWidth * 0.75 - titleWidth / 2,
+      y: 20,
+      width: titleWidth,
+      height: calculateTextHeight(title, titleWidth, titleStyle),
+      index: drawElements.value.length,
+      content: title,
+      style: titleStyle
+    }));
+    
+    const descStyle = {
+      fontSize: FONT_SIZES.find(size => size.label === 'Middle').value,
+      color: currentTextStyle.value.color
+    };
+    const descWidth = 600;
+    const titleHeight = calculateTextHeight(title, titleWidth, titleStyle);
+    drawElements.value.push(createTextElement({
+      x: imageElement.naturalWidth * 0.75 - descWidth / 2,
+      y: 40 + titleHeight,
+      width: descWidth,
+      height: calculateTextHeight(description, descWidth, descStyle),
+      index: drawElements.value.length,
+      content: description,
+      style: descStyle
+    }));
+  };
+  queryPromises.push(overallAnalysis());
 
-    if (i === -1) {
-      //
-    } else {
-      const box = boxes[i];
+  // 添加每个框的分析 Promise
+  const scaleX = imageElement.naturalWidth / canvasImage.value.$el.offsetWidth * ratio;
+  const scaleY = imageElement.naturalHeight / canvasImage.value.$el.offsetHeight * ratio;
+  const rect = canvasImage.value.$el.getBoundingClientRect();
+  const canvasRect = canvasRef.value.getBoundingClientRect();
+  const offsetX = rect.left - canvasRect.left;
+  const offsetY = rect.top - canvasRect.top;
+
+  boxes.forEach((box) => {
+    const boxAnalysis = async () => {
+      const tempCanvas = document.createElement('canvas');
+      const ctx = tempCanvas.getContext('2d');
+      tempCanvas.width = imageElement.naturalWidth * ratio;
+      tempCanvas.height = imageElement.naturalHeight * ratio;
+
+      ctx.drawImage(imageElement, 0, 0, tempCanvas.width, tempCanvas.height);
+      ctx.lineWidth = 2;
+
       // 转换坐标和尺寸到实际图片大小
       const scaledX = (box.x - offsetX) * scaleX;
       const scaledY = (box.y - offsetY) * scaleY;
@@ -1132,131 +1316,37 @@ const queryImage = async () => {
       ctx.strokeStyle = 'red';
       ctx.strokeWidth = 4;
       ctx.strokeRect(scaledX, scaledY, scaledWidth, scaledHeight);
-    }
 
-    const dataUrl = tempCanvas.toDataURL('image/png');
-    
-    if (i === -1) {
-      const result = await analyzeWithOpenAI(dataUrl, customOverallPrompt.value);
-      const { title, description } = result;
-      
-      // 添加标题文本框
-      const titleStyle = {
-        fontSize: FONT_SIZES.find(size => size.label === 'Extra Large').value,
-        fontWeight: 'bold',
-        color: currentTextStyle.value.color
-      };
-      const titleWidth = 400;
-
-      drawElements.value.push(createTextElement({
-        x: imageElement.naturalWidth * 0.75 - titleWidth / 2,
-        y: 20,
-        width: titleWidth,
-        height: calculateTextHeight(title, titleWidth, titleStyle),
-        index: drawElements.value.length,
-        content: title,
-        style: titleStyle
-      }));
-      
-      const descStyle = {
-        fontSize: FONT_SIZES.find(size => size.label === 'Middle').value,
-        color: currentTextStyle.value.color
-      };
-      const descWidth = 600;
-      const titleHeight = calculateTextHeight(title, titleWidth, titleStyle);
-      drawElements.value.push(createTextElement({
-        x: imageElement.naturalWidth * 0.75 - descWidth / 2,
-        y: 40 + titleHeight,
-        width: descWidth,
-        height: calculateTextHeight(description, descWidth, descStyle),
-        index: drawElements.value.length,
-        content: description,
-        style: descStyle
-      }));
-    } else {
-      const box = boxes[i];
+      const dataUrl = tempCanvas.toDataURL('image/png');
       const result = await analyzeWithOpenAI(dataUrl, customBoxPrompt.value);
-      // const link = document.createElement('a');
-      // link.download = `annotated_${Date.now()}.png`;
-      // link.href = dataUrl;
-      // link.click();
-
       const { content } = result;
+
       const elementStyle = {
         fontSize: FONT_SIZES.find(size => size.label === 'Middle').value,
         color: currentTextStyle.value.color
       };
 
       const elementWidth = 200;
-
       const x = box.x + box.width / 2 - elementWidth / 2;
       const y = box.y + box.height / 2 + 10;
       const width = elementWidth;
       const height = calculateTextHeight(content, width, elementStyle);
 
-      const scaledX = (x - offsetX) * scaleX;
-      const scaledY = (y - offsetY) * scaleY;
-      const scaledWidth = width * scaleX;
-      const scaledHeight = height * scaleY;
-
-      // Calculate average RGB for the scaled region
-      let totalR = 0, totalG = 0, totalB = 0;
-      let pixelCount = 0;
-      
-      // Get image data from tempCanvas
-      const imageData = ctx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
-      const pixels = imageData.data;
-      for (let x = Math.floor(scaledX); x < Math.floor(scaledX + scaledWidth); x++) {
-        for (let y = Math.floor(scaledY); y < Math.floor(scaledY + scaledHeight); y++) {
-          if (x >= 0 && x < tempCanvas.width && y >= 0 && y < tempCanvas.height) {
-            const pos = (y * tempCanvas.width + x) * 4;
-            totalR += pixels[pos];
-            totalG += pixels[pos + 1];
-            totalB += pixels[pos + 2];
-            pixelCount++;
-          }
-        }
-      }
-
-      const avgR = totalR / pixelCount;
-      const avgG = totalG / pixelCount;
-      const avgB = totalB / pixelCount;
-
-      // Find most contrasting color from TEXT_COLORS
-      let maxDiff = -1;
-      let bestColor = TEXT_COLORS[0].value;
-
-      TEXT_COLORS.forEach(colorOption => {
-        // Convert hex to RGB
-        const hex = colorOption.value.replace('#', '');
-        const r = parseInt(hex.substr(0,2), 16);
-        const g = parseInt(hex.substr(2,2), 16);
-        const b = parseInt(hex.substr(4,2), 16);
-
-        // Calculate color difference using simple RGB distance
-        const diff = Math.sqrt(
-          Math.pow(r - avgR, 2) + 
-          Math.pow(g - avgG, 2) + 
-          Math.pow(b - avgB, 2)
-        );
-
-        if (diff > maxDiff) {
-          maxDiff = diff;
-          bestColor = colorOption.value;
-        }
-      });
-
-      elementStyle.color = bestColor;
-
       drawElements.value.push(createTextElement({
         x: x,
-        y: y, width, height,
+        y: y,
+        width,
+        height,
         index: drawElements.value.length,
         content: content,
         style: elementStyle
       }));
-    }
-  }
+    };
+    queryPromises.push(boxAnalysis());
+  });
+
+  // 等待所有查询完成
+  await Promise.all(queryPromises);
 
   // const link = document.createElement('a');
   // link.download = `annotated_${Date.now()}.png`;
