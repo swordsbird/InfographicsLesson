@@ -339,17 +339,17 @@ const setDefaultStyles = (meta_data, data, input_styles) => {
     console.log(numberData);
     // numberData (3,10) ~ scale_factor (1, 2) with 0.1 random noise
   
-    scale_factor = (numberData-3)/7 + 1 + (Math.random()*0.1-0.05);
+    // scale_factor = (numberData-3)/7 + 1 + (Math.random()*0.1-0.05);
     var height = 600;
-    var width = 600;
-    console.log(scale_factor)
-    if (styles.y_axis_styles.angle===0 || styles.y_axis_styles.angle===180){
-      height = 600*scale_factor;
-    }
-    else {
-      width = 600*scale_factor;
-    }
-    console.log(height, width);
+    var width = 1200;
+    // console.log(scale_factor)
+    // if (styles.y_axis_styles.angle===0 || styles.y_axis_styles.angle===180){
+    //   height = 600*scale_factor;
+    // }
+    // else {
+    //   width = 600*scale_factor;
+    // }
+    // console.log(height, width);
     return [meta_data, data, styles, width, height];
   }
   

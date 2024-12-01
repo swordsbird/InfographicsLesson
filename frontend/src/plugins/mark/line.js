@@ -11,7 +11,7 @@ class Line extends baseMark {
         this.g = null;
         this.element = null;
 
-
+        console.log("styles", styles);
         this.positionList = positionList;
         this.strokeColor = styles.strokeStyles.strokeColor;
         this.strokeWidth = styles.strokeStyles.strokeWidth;

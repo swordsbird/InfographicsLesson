@@ -1,0 +1,83 @@
+{
+    "meta_data": {
+        "x_type": "categorical",
+        "y_type": "numerical",
+        "x_label": "Years",
+        "x_icon": "",
+        "y_label": "GPA",
+        "y_icon": "",
+        "x_axis": "Years",
+        "x_axis_icon": "",
+        "y_axis": "GPA",
+        "y_axis_icon": "",
+        "y_color": [
+            [
+                255,
+                217,
+                47
+            ]
+        ],
+        "title": "",
+        "topic_icon": "",
+        "caption": "",
+        "group_indicator": [
+            ""
+        ]
+    },
+    "data": [
+        {
+            "x_data": "2020",
+            "y_data": 1.3,
+            "x_data_icon": "",
+            "group": "",
+            "color": [
+                255,
+                217,
+                47
+            ]
+        },
+        {
+            "x_data": "2021",
+            "y_data": 2.6,
+            "x_data_icon": "",
+            "group": "",
+            "color": [
+                255,
+                217,
+                47
+            ]
+        },
+        {
+            "x_data": "2022",
+            "y_data": 3.3,
+            "x_data_icon": "",
+            "group": "",
+            "color": [
+                255,
+                217,
+                47
+            ]
+        },
+        {
+            "x_data": "2023",
+            "y_data": 4.0,
+            "x_data_icon": "",
+            "group": "",
+            "color": [
+                255,
+                217,
+                47
+            ]
+        }
+    ],
+    "input_styles": {
+        "annotate_data": true,
+        "show_legend": false,
+        "x_axis_styles": {
+            "angle": 0
+        },
+        "y_axis_styles": {
+            "angle": 90
+        }
+    }
+}

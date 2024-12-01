@@ -33,17 +33,7 @@ class BarChart extends Chart {
         let canvasWidth = wholeCanvasBBox.width;
         let canvasHeight = wholeCanvasBBox.height;
         console.log("canvasWidth, canvasHeight", canvasWidth, canvasHeight);
-        // adjust this.width and this.height to fit the wholeCanvas
-        // let canvasAspectRatio = canvasWidth/canvasHeight;
-        // let chartAspectRatio = this.width/this.height;
-        // if (canvasAspectRatio > chartAspectRatio){
-        //     this.height = canvasHeight;
-        //     this.width = this.height * chartAspectRatio;
-        // }
-        // else{
-        //     this.width = canvasWidth;
-        //     this.height = this.width / chartAspectRatio;
-        // }
+
         console.log("this.width, this.height", this.width, this.height);
         this.canvas = wholeCanvas.append('svg').attr('width', canvasWidth).attr('height', canvasHeight);
         // let translateX = (canvasWidth - this.width)/2;
@@ -61,7 +51,7 @@ class BarChart extends Chart {
         if (this.styles.show_legend) {
             await this.configLegend();
         }
-        await this.configBackground();
+        // await this.configBackground();
 
         await this.adjustSVGtoFitCanvas(this.canvas);
     }
@@ -77,7 +67,7 @@ class BarChart extends Chart {
             this.x_scale = d3.scaleBand()
                 .domain(this.data.map(d => d.x))
                 .range([0, x_axis_length])
-                .padding(0.1);
+                .padding(0.5);
         }
         this.y_axis_positions = {x: this.width/2, y: this.height/2};
         if (this.meta_data.y_type === 'numerical') {
@@ -271,13 +261,6 @@ class BarChart extends Chart {
                 } 
             }
         }
-        // // add background
-        // const background = this.backgroundGroup.append('rect')
-        //     .attr('x', 0)
-        //     .attr('y', 0)
-        //     .attr('width', this.width)
-        //     .attr('height', this.height)
-        //     .attr('fill', this.styles.backgroundColor);
     }
 }
 

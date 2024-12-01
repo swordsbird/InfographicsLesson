@@ -182,9 +182,10 @@
         </div>
       </div>
 
-      <!-- 右侧栏 - 20% -->
+      <!-- 右侧栏 -->
       <div class="right-sidebar">
         <div class="upper-section">
+          <!-- Pictogram 部分 -->
           <v-container class="pa-4">
             <v-row dense>
               <v-col v-for="(path, index) in pictogramPaths" :key="index" cols="3" class="mb-2">
@@ -199,36 +200,29 @@
             </v-row>
           </v-container>
         </div>
+
+        <!-- 添加分割图片部分 -->
+        <div class="middle-section">
+          <div class="section-title pa-2">分割图片</div>
+          <v-container class="pa-4">
+            <v-row dense>
+              <v-col v-for="image in segmentedImages" :key="image.id" cols="6" class="mb-2">
+                <v-card variant="outlined" class="segment-image-card">
+                  <div class="image-container">
+                    <v-img
+                      cover
+                      height="100"
+                      :src="image.url"
+                      @click="addSegmentToChart(image)"
+                    ></v-img>
+                  </div>
+                </v-card>
+              </v-col>
+            </v-row>
+          </v-container>
+        </div>
+
         <div class="lower-section">
-          <div class="scrollable-content">
-            <v-container class="pa-4">
-              <v-row dense>
-                <v-col cols="12" class="mb-2">
-                  <v-btn
-                    block
-                    color="primary"
-                    variant="outlined"
-                  >
-                    操作按钮 1
-                  </v-btn>
-                </v-col>
-                <v-col cols="12" class="mb-2">
-                  <v-btn
-                    block
-                    color="primary"
-                    variant="outlined"
-                  >
-                    操作按钮 2
-                  </v-btn>
-                </v-col>
-                <v-col v-for="n in 30" :key="n" cols="12" class="mb-2">
-                  <v-card variant="outlined" class="pa-4">
-                    占位内容 {{ n }}
-                  </v-card>
-                </v-col>
-              </v-row>
-            </v-container>
-          </div>
         </div>
       </div>
     </div>
@@ -251,7 +245,7 @@ import { createBaseElement, createTextElement, createPictogramElement,
 const jsonFiles = ref([]); // JSON 文件列表
 const selectedJsonFile = ref(''); // 用户选中的 JSON 文件
 const chartTypes = ref(['Bar', 'Pie', 'Line', 'Scatter Plot']); // 图表类型列表
-const selectedChartType = ref(''); // 用户选中的图���类型
+const selectedChartType = ref(''); // 用户选中的图类型
 const chartData = ref(null); // 用于存储加载的 JSON 数据
 const svgFiles = ref([]); // SVG 文件列表
 const isResizing = ref(false);
@@ -273,8 +267,10 @@ const currentImageId = ref(null);
 const ImageIdList = ref([]);
 const targetType = ref('element');
 
+// 添加分割图片相关的状态
+const segmentedImages = ref([]);
 
-// 动态加载 public/json 文件夹下的����有 JSON 文件
+// 在 onMounted 中加载分割图片数据
 onMounted(() => {
   canvasRef.value = document.getElementById('chartCanvas');
   const files = import.meta.glob('/public/json/*.json'); // 匹配 public/json 文件夹中的 JSON 文件
@@ -286,6 +282,16 @@ onMounted(() => {
   pictogramPaths.value = Object.keys(pictogramsGlobal).map(filePath => filePath.replace('/public/', ''));
   console.log("pictogramPaths", pictogramPaths);
   addHoverEffect();
+  
+  // 从 localStorage 加载分割图片
+  try {
+    const savedSegments = localStorage.getItem('segmentedImages');
+    if (savedSegments) {
+      segmentedImages.value = JSON.parse(savedSegments);
+    }
+  } catch (error) {
+    console.error('从localStorage加载分割图片失败:', error);
+  }
 });
 
 // 生成图表函数
@@ -471,7 +477,7 @@ const clearInteractions = () => {
 };
 
 const addHoverEffect = () => {
-  clearInteractions(); // 清除所有交互功��
+  clearInteractions(); // 清除所有交互功
   const addEffect = (elementId, titleId, hoverColor, modifyFill = true) => {
     const element = d3.select(`#${elementId}`);
     const title = d3.select(`#${titleId}`);
@@ -828,6 +834,41 @@ const addImageToChart = (path) => {
   // image.on('mousedown', (event) => startDrag(event, boundingBox.id, 'image'));
 };
 
+// 添加分割图片到画布的方法
+const addSegmentToChart = (image) => {
+  const svg = d3.select('#chartCanvas svg');
+  const imageId = `segment-${Date.now()}`;
+  
+  const imageElement = svg.append('image')
+    .attr('id', imageId)
+    .attr('x', 50)
+    .attr('y', 50)
+    .attr('width', image.originalWidth || 100)
+    .attr('height', image.originalHeight || 100)
+    .attr('href', image.url)
+    .attr('opacity', 0.1);
+    
+  imageElement.transition()
+    .duration(500)
+    .attr('opacity', 1);
+  
+  imageElement.on('mouseover', () => {
+    targetType.value = 'image';
+    const imageBBox = imageElement.node().getBoundingClientRect();
+    if (!isDragging.value && !isResizing.value) {
+      const boundingBox = createBoundingBox({
+        x: imageBBox.x,
+        y: imageBBox.y,
+        width: imageBBox.width,
+        height: imageBBox.height,
+        index: drawElements.value.length,
+      });
+      drawElements.value.push(boundingBox);
+      selectedElementId.value = boundingBox.id;
+      currentImageId.value = imageId;
+    }
+  });
+};
 
 </script>
 
@@ -844,14 +885,33 @@ const addImageToChart = (path) => {
   border-left: 1px solid rgba(0, 0, 0, 0.12);
 }
 
-.upper-section {
+.upper-section,
+.middle-section {
   flex-shrink: 0;
-  height: 50%;
+  height: 40%;
   overflow-y: auto;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.12);
 }
 
 .lower-section {
   flex-grow: 1;
   overflow-y: auto;
+}
+
+.section-title {
+  font-weight: 500;
+  color: rgba(0, 0, 0, 0.87);
+  background-color: #f5f5f5;
+}
+
+.segment-image-card {
+  position: relative;
+  overflow: hidden;
+}
+
+.image-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
 }
 </style>

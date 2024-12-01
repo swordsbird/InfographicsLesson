@@ -65,7 +65,7 @@
       <!-- 中间画布区域 - 60% -->
       <div 
         class="canvas-container" 
-        style="overflow: auto;"
+        style="overflow: auto; display: flex; flex-direction: column;"
         :data-mode="interactionMode"
       >
         <!-- 添加画布工具栏 -->
@@ -97,34 +97,51 @@
           >
             确认分割
           </v-btn>
+
+          <!-- 添加重置按钮 -->
+          <v-btn
+            class="ml-4"
+            color="error"
+            :disabled="!maskImage && drawElements.length === 0"
+            @click="resetSegmentation"
+            size="default"
+            density="comfortable"
+            style="width: 120px; height: 40px"
+          >
+            重置
+          </v-btn>
         </div>
 
-        <!-- 画布 -->
+        <!-- 修改画布容器样式 -->
         <div 
           class="canvas-wrapper position-relative" 
           ref="canvasRef" 
-          style="margin-top: 0;"
+          style="flex: 1; width: 100%; height: 100%; min-height: 0;"
           @click="handleCanvasClick"
+          @contextmenu.prevent="handleCanvasClick"
           @mousedown="handleMouseDown"
           @mousemove="handleMouseMove"
           @mouseup="handleMouseUp"
         >
           <v-img
             :src="selectedImage"
-            cover
+            :width="canvasSize.width"
+            :height="canvasSize.height"
             ref="canvasImage"
             class="canvas-image"
             :draggable="false"
             @load="handleImageLoad"
+            style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: contain;"
           ></v-img>
           
-          <!-- 添加遮罩层 -->
           <v-img
             v-if="maskImage" 
             :src="maskImage"
+            :width="canvasSize.width"
+            :height="canvasSize.height"
             class="mask-overlay"
-            cover
             :draggable="false"
+            style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: contain;"
           ></v-img>
           
           <!-- 点击标记 -->
@@ -150,12 +167,25 @@
             <v-row dense>
               <v-col v-for="(image, index) in segmentedImages" :key="index" cols="6" class="mb-2">
                 <v-card variant="outlined" class="segment-image-card">
-                  <v-img
-                    cover
-                    height="100"
-                    :src="image.url"
-                    @click="handleSegmentImageClick(image)"
-                  ></v-img>
+                  <!-- 图片容器 -->
+                  <div class="image-container">
+                    <v-img
+                      cover
+                      height="100"
+                      :src="image.url"
+                      @click="handleSegmentImageClick(image)"
+                    ></v-img>
+                    
+                    <!-- 删除按钮 -->
+                    <v-btn
+                      icon="mdi-delete"
+                      size="x-small"
+                      color="error"
+                      variant="flat"
+                      class="delete-btn"
+                      @click.stop="deleteSegmentImage(image.id)"
+                    ></v-btn>
+                  </div>
                 </v-card>
               </v-col>
             </v-row>
@@ -223,6 +253,9 @@ const segmentedImages = ref([]);
 
 const isConfirming = ref(false);
 
+// 添加新的状态来跟踪所有点击
+const clickPrompts = ref([]);
+
 const triggerFileInput = () => {
   fileInput.value.click();
 };
@@ -252,17 +285,31 @@ const handleImageLoad = async (event) => {
   const canvas = canvasRef.value;
   
   if (canvas && img && img.naturalHeight) {
+    // 获取容器的实际尺寸
+    const containerWidth = canvas.offsetWidth;
+    const containerHeight = canvas.offsetHeight;
+    
+    // 计算图片的宽高比
     const imgRatio = img.naturalHeight / img.naturalWidth;
-    const canvasWidth = canvas.offsetWidth;
-    const canvasHeight = canvasWidth * imgRatio;
-    canvas.style.height = `${canvasHeight}px`;
+    
+    // 根据容器尺寸计算实际显示尺寸
+    let displayWidth, displayHeight;
+    
+    if (containerWidth / containerHeight > img.naturalWidth / img.naturalHeight) {
+      // 容器更宽，以高度为准
+      displayHeight = containerHeight;
+      displayWidth = containerHeight / imgRatio;
+    } else {
+      // 容器更高，以宽度为准
+      displayWidth = containerWidth;
+      displayHeight = containerWidth * imgRatio;
+    }
     
     // 更新 canvasSize
     canvasSize.value = {
-      width: canvasWidth,
-      height: canvasHeight
+      width: displayWidth,
+      height: displayHeight
     };
-    console.log("canvasSize", canvasSize.value);
   }
 };
 
@@ -278,7 +325,7 @@ const getElementStyle = (element) => {
   if (element.type === ELEMENT_TYPES.CIRCLE) {
     return {
       ...baseStyle,
-      backgroundColor: 'rgb(64, 224, 208)',
+      backgroundColor: element.isNegative ? 'rgb(255, 50, 50)' : 'rgb(64, 224, 208)',
       borderRadius: '50%',
     };
   }
@@ -294,6 +341,14 @@ onMounted(async () => {
   updateCanvasSize();
   samAPI.value = new SamAPI();
   await samAPI.value.initialize();
+  try {
+    const savedSegments = localStorage.getItem('segmentedImages');
+    if (savedSegments) {
+      segmentedImages.value = JSON.parse(savedSegments);
+    }
+  } catch (error) {
+    console.error('从localStorage加载数据失败:', error);
+  }
 });
 
 onUnmounted(() => {
@@ -315,47 +370,47 @@ const canvasSize = ref({ width: 0, height: 0 });
 const handleCanvasClick = async (event) => {
   if (interactionMode.value !== 'click' || !selectedImage.value) return;
   
+  // 阻止右键菜单
+  event.preventDefault();
+  
   const rect = canvasRef.value.getBoundingClientRect();
   const x = event.clientX - rect.left;
   const y = event.clientY - rect.top;
   
-  // 清除之前的点击标记，只保留最新的点
-  drawElements.value = drawElements.value.filter(
-    element => element.type !== ELEMENT_TYPES.CIRCLE
-  );
+  // 判断是左键还是右键点击
+  const isNegative = event.button === 2; // 右键点击
   
-  // 添加新的点击标记
+  // 添加新的点击标记，根据正负点使用不同颜色
   drawElements.value.push(createCircle({
     x,
     y,
     radius: 5,
-    index: drawElements.value.length
+    index: drawElements.value.length,
+    isNegative // 传递点击类型
   }));
+
+  // 获取图片尺寸
+  const imageElement = canvasImage.value.$el.querySelector('img');
+  const imageHeight = imageElement.naturalHeight;
+  const imageWidth = imageElement.naturalWidth;
+
+  // 添加新的点击提示到数组，包含类型信息
+  clickPrompts.value.push({
+    x: x * (imageWidth / rect.width),
+    y: y * (imageHeight / rect.height),
+    type: isNegative ? -1 : 1 // 添加类型标记
+  });
 
   // 调用SAM进行分割
   try {
     isLoading.value = true;
-    
-    // 获取图片尺寸
-    const imageElement = canvasImage.value.$el.querySelector('img');
-    const imageHeight = imageElement.naturalHeight;
-    const imageWidth = imageElement.naturalWidth;
-
-    // 准备点击提示
-    const clickPrompts = [{
-      x: x * (imageWidth / rect.width),  // 转换为原始图片坐标
-      y: y * (imageHeight / rect.height)
-    }];
-
-    // 调用SAM生成遮罩
     const result = await samAPI.value.generateMask({
       imageHeight,
       imageWidth,
-      clickPrompts,
-      boxPrompts: []  // 点击模式下不需要框选
+      clickPrompts: clickPrompts.value,
+      boxPrompts: []
     });
-    console.log("result", result);
-    // 显示分割结果
+
     if (result) {
       maskImage.value = result;
     }
@@ -466,7 +521,7 @@ watch(selectedImage, async (newImage) => {
     alert('无法获取图片元素');
       analyzing.value = false;
       return;
-    } 
+    }
     const tempCanvas = document.createElement('canvas');
     const ctx = tempCanvas.getContext('2d');
 
@@ -499,7 +554,7 @@ watch(selectedImage, async (newImage) => {
     }
   } catch (error) {
     console.error('处理图片失败:', error);
-    // 显示错误提示
+    // 示错误提示
     // ...
   } finally {
     isEmbeddingLoading.value = false;
@@ -511,7 +566,7 @@ const saveMask = async () => {
   if (!maskImage.value || !selectedImage.value) return;
   
   try {
-    // 创建一个临时canvas来合成图像
+    // 创建一个时canvas来合图像
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
     
@@ -612,7 +667,7 @@ const analyzeImage = async () => {
       })
     });
     
-    // 添加响应状态检查
+    // 添加响应状��检查
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`);
     }
@@ -628,7 +683,7 @@ const analyzeImage = async () => {
       result = JSON.parse(responseText);
     } catch (e) {
       console.error('JSON解析失败:', e);
-      console.log('收到的响应内容:', responseText);
+      console.log('到的响应内容:', responseText);
       throw new Error('服务器返回的数据格式不正确');
     }
     
@@ -675,13 +730,8 @@ const analyzeImage = async () => {
 
 // 处理分割图片点击
 const handleSegmentImageClick = (image) => {
-  // 可以添加点击处理逻辑，比如下载或预览
-  const a = document.createElement('a');
-  a.href = image.url;
-  a.download = `${image.id}.png`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
+  // 这里可以添加预览或其他操作逻辑
+  console.log('查看分割图片:', image.id);
 };
 
 // 组件卸载时清理URL
@@ -708,33 +758,115 @@ const confirmSegment = async () => {
       loadImage(maskImage.value)
     ]);
     
-    // 设置canvas尺寸
-    canvas.width = originalImg.width;
-    canvas.height = originalImg.height;
-    
-    // 绘制原始图片
-    ctx.drawImage(originalImg, 0, 0);
-    
-    // 设置混合模式
-    ctx.globalCompositeOperation = 'destination-in';
+    // 首先在临时canvas上绘制完整的遮罩，用于计算边界
+    const tempCanvas = document.createElement('canvas');
+    const tempCtx = tempCanvas.getContext('2d');
+    tempCanvas.width = originalImg.width;
+    tempCanvas.height = originalImg.height;
     
     // 绘制遮罩
-    ctx.drawImage(maskImg, 0, 0, canvas.width, canvas.height);
+    tempCtx.drawImage(maskImg, 0, 0);
     
-    // 转换为blob并添加到分割结果中
-    canvas.toBlob((blob) => {
-      const url = URL.createObjectURL(blob);
-      segmentedImages.value.push({
-        id: `segment_click_${Date.now()}`,
-        url: url,
-        blob: blob
-      });
-      
-      // 清除当前的遮罩和点击标记
-      maskImage.value = null;
-      drawElements.value = [];
-      
-    }, 'image/png');
+    // 获取遮罩的像素数据
+    const imageData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
+    const pixels = imageData.data;
+    
+    // 计算遮罩的边界框
+    let minX = tempCanvas.width;
+    let minY = tempCanvas.height;
+    let maxX = 0;
+    let maxY = 0;
+    
+    for (let y = 0; y < tempCanvas.height; y++) {
+      for (let x = 0; x < tempCanvas.width; x++) {
+        const i = (y * tempCanvas.width + x) * 4;
+        // 检查alpha通道是否不为0
+        if (pixels[i + 3] > 0) {
+          minX = Math.min(minX, x);
+          minY = Math.min(minY, y);
+          maxX = Math.max(maxX, x);
+          maxY = Math.max(maxY, y);
+        }
+      }
+    }
+    
+    // 添加一些padding
+    const padding = 10;
+    minX = Math.max(0, minX - padding);
+    minY = Math.max(0, minY - padding);
+    maxX = Math.min(tempCanvas.width, maxX + padding);
+    maxY = Math.min(tempCanvas.height, maxY + padding);
+    
+    // 设置最终canvas的尺寸为边界框大小
+    const width = maxX - minX;
+    const height = maxY - minY;
+    
+    // 确保边界框有效
+    if (width <= 0 || height <= 0) {
+      throw new Error('无效的分割区域');
+    }
+    
+    canvas.width = width;
+    canvas.height = height;
+    
+    // 创建一个新的canvas用于存储原始图片的裁剪部分
+    const finalCanvas = document.createElement('canvas');
+    const finalCtx = finalCanvas.getContext('2d');
+    finalCanvas.width = width;
+    finalCanvas.height = height;
+    
+    // 首先绘制裁剪后的原始图片
+    finalCtx.drawImage(originalImg, 
+      minX, minY, width, height,  // 源图像裁剪区域
+      0, 0, width, height         // 目标区域
+    );
+    
+    // 创建一个临时canvas用于处理遮罩
+    const maskCanvas = document.createElement('canvas');
+    const maskCtx = maskCanvas.getContext('2d');
+    maskCanvas.width = width;
+    maskCanvas.height = height;
+    
+    // 绘制裁剪后的遮罩
+    maskCtx.drawImage(maskImg,
+      minX, minY, width, height,  // 源图像裁剪区域
+      0, 0, width, height         // 目标区域
+    );
+    
+    // 获取遮罩的像素数据
+    const maskData = maskCtx.getImageData(0, 0, width, height);
+    const finalData = finalCtx.getImageData(0, 0, width, height);
+    
+    // 根据遮罩设置透明度
+    for (let i = 0; i < maskData.data.length; i += 4) {
+      // finalData.data[i + 3] = maskData.data[i + 3]; // 只复制alpha通道
+      if (maskData.data[i + 3] == 0) {
+        finalData.data[i + 3] = maskData.data[i + 3]; // 只复制alpha通道
+      }
+    }
+    
+    // 将处理后的图像数据放回canvas
+    finalCtx.putImageData(finalData, 0, 0);
+    
+    // 转换为base64并保存到localStorage
+    const base64Image = finalCanvas.toDataURL('image/png');
+    const segmentId = `segment_${Date.now()}`;
+    
+    // 添加到segmentedImages数组
+    segmentedImages.value.push({
+      id: segmentId,
+      url: base64Image,
+      originalWidth: width,
+      originalHeight: height
+    });
+    
+    // 保存到localStorage
+    saveSegmentsToLocalStorage();
+    
+    // 清除所有状态
+    maskImage.value = null;
+    drawElements.value = [];
+    clickPrompts.value = []; // 清除点击记录
     
   } catch (error) {
     console.error('确认分割失败:', error);
@@ -742,6 +874,35 @@ const confirmSegment = async () => {
   } finally {
     isConfirming.value = false;
   }
+};
+
+// 添加保存到localStorage的函数
+const saveSegmentsToLocalStorage = () => {
+  try {
+    localStorage.setItem('segmentedImages', JSON.stringify(segmentedImages.value));
+  } catch (error) {
+    console.error('保存到localStorage失败:', error);
+    // 如果数据太大，可以考虑清理一些旧数据
+    if (error.name === 'QuotaExceededError') {
+      // 移除最老的几个分割结果
+      segmentedImages.value = segmentedImages.value.slice(-5);
+      // 重试保存
+      localStorage.setItem('segmentedImages', JSON.stringify(segmentedImages.value));
+    }
+  }
+};
+
+// 添加删除分割图片的函数
+const deleteSegmentImage = (imageId) => {
+  segmentedImages.value = segmentedImages.value.filter(img => img.id !== imageId);
+  saveSegmentsToLocalStorage();
+};
+
+// 添加重置按钮和处理函数
+const resetSegmentation = () => {
+  maskImage.value = null;
+  drawElements.value = [];
+  clickPrompts.value = [];
 };
 </script>
 

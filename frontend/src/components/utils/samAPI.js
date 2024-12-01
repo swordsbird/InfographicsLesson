@@ -47,10 +47,8 @@ export class SamAPI {
     let point_labels = [];
     for (const prompt of clickPrompts) {
       point_coords.push([prompt.x, prompt.y]);
-      point_labels.push(1);
+      point_labels.push(prompt.type);
     }
-    point_coords.push([0.0, 0.0]);
-    point_labels.push(-1.0);
 
     let box_coords = [];
     for (const prompt of boxPrompts) {

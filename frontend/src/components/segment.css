@@ -105,3 +105,24 @@
 .gap-2 {
   gap: 8px;
 }
+
+.segment-image-card {
+  position: relative;
+  overflow: hidden;
+}
+
+.image-container {
+  position: relative;
+}
+
+.delete-btn {
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.image-container:hover .delete-btn {
+  opacity: 1;
+}

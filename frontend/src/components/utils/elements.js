@@ -254,13 +254,14 @@ const getElementStyle = (element, selectedElementId) => {
 };
 
 // 创建圆形的函数
-const createCircle = ({ x, y, radius = 5, index }) => ({
-  id: `circle-${Date.now()}-${index}`,
+const createCircle = ({ x, y, radius, index, isNegative = false }) => ({
+  id: `circle_${index}`,
   type: ELEMENT_TYPES.CIRCLE,
-  x: x - radius, // 调整x坐标使圆心在点击位置
-  y: y - radius, // 调整y坐标使圆心在点击位置
+  x: x - radius,
+  y: y - radius,
   width: radius * 2,
   height: radius * 2,
+  isNegative
 });
 
 export { createBaseElement, createTextElement, createPictogramElement, createBoundingBox, ELEMENT_TYPES, SHORT_ELEMENT_TYPES, getShortId, getBoxStyle, getBoxType , getElementStyle, createCircle };
