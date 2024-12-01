@@ -292,8 +292,26 @@
             :loading="queryImageStatus"
             @click="queryImage"
           >
-            开始查询
+            批量解释
           </v-btn>
+          <div class="d-flex">
+            <v-btn
+              color="dark"
+              density="comfortable"
+              class="mb-2 mx-2"
+              @click="querySingleImage"
+            >
+              单独解释
+            </v-btn>
+            <v-btn
+              color="dark" 
+              density="comfortable"
+              class="mb-2 mx-2"
+              @click="extractPictogram"
+            >
+              提取图形
+            </v-btn>
+          </div>
 
           <div class="detection-list">
             <!-- 检测结果列表 -->
@@ -925,6 +943,7 @@ const getElementStyle = (element) => {
     top: `${element.y}px`,
     width: `${element.width}px`,
     height: `${element.height}px`,
+    'z-index': element.type === ELEMENT_TYPES.BOUNDING_BOX ? 1 : 2 
   };
 };
 
@@ -1026,6 +1045,14 @@ const calculateTextHeight = (text, width, style) => {
   document.body.removeChild(div);
   
   return Math.max(height, 40); // 设置最小高度为 40px
+};
+
+const querySingleImage = async () => {
+
+};
+
+const extractPictogram = async () => {
+
 };
 
 // 修改 queryImage 函数
