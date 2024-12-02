@@ -174,9 +174,9 @@
                 <div v-if="elementsVisible" class="resize-handle" @mousedown.stop="startResize($event, element.id)"></div>
               </div>
 
-              <!-- 独立的边框box -->
+              <!-- 独立的边框box element.type === ELEMENT_TYPES.BOUNDING_BOX ||  -->
               <div 
-                v-if="element.type === ELEMENT_TYPES.BOUNDING_BOX || elementsVisible"
+                v-if="elementsVisible"
                 class="element-box"
                 :class="{
                   'selected': selectedElementId === element.id,
