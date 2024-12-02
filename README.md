@@ -30,9 +30,16 @@ cd frontend
 npm install
 ```
 
-3. 创建环境配置文件
+3. 创建助教提供的OPENAI_API.js文件，并且将文件放在frontend/src/components/utils/目录下
 ```bash
-cp .env.example .env
+
+const OPENAI_API_KEY = "待填写"
+const OPENAI_API_URL = "https://aihubmix.com/v1/chat/completions"
+const OPENAI_MODEL = "gpt-4o-mini"
+const SEGMENT_API = "待填写"
+const SEGMENT_BOX_API = "待填写"
+
+export { OPENAI_API_KEY, OPENAI_API_URL, OPENAI_MODEL, SEGMENT_API, SEGMENT_BOX_API }
 ```
 
 ## 运行项目
@@ -42,12 +49,6 @@ cp .env.example .env
 npm run dev
 ```
 访问 `http://localhost:3000`
-
-### 生产环境
-```bash
-npm run build
-npm run preview
-```
 
 ## 项目结构
 
