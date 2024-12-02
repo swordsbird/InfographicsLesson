@@ -1235,12 +1235,8 @@ const queryImage = async () => {
   const maxHeight = 1200;
   const ratio = Math.min(maxWidth / imageElement.naturalWidth, maxHeight / imageElement.naturalHeight);
 
-
   const boxes = drawElements.value.filter(element => element.type === ELEMENT_TYPES.BOUNDING_BOX);
-  const numBoxes = boxes.length;
-  // 创建所有查询的 Promise 数组
   const queryPromises = [];
-  
   // 添加整体分析的 Promise
   const overallAnalysis = async () => {
     const tempCanvas = document.createElement('canvas');
@@ -1255,13 +1251,20 @@ const queryImage = async () => {
     const { title, description } = result;
     
     // 添加标题文本框
+    // 标题文本框样式设置
     const titleStyle = {
       fontSize: FONT_SIZES.find(size => size.label === 'Extra Large').value,
       fontWeight: 'bold',
       color: currentTextStyle.value.color
     };
+    // 标题文本框宽度设置,可根据需要调整
     const titleWidth = 400;
 
+    // 添加标题文本框
+    // x: 标题水平位置,默认在图片右侧75%处居中,可修改比例调整位置
+    // y: 标题垂直位置,默认距顶部20px,可调整
+    // width: 文本框宽度,默认400px
+    // height: 根据内容自动计算,可通过修改calculateTextHeight()调整行高等
     drawElements.value.push(createTextElement({
       x: imageElement.naturalWidth * 0.75 - titleWidth / 2,
       y: 20,
@@ -1272,12 +1275,20 @@ const queryImage = async () => {
       style: titleStyle
     }));
     
+    // 描述文本框样式设置
     const descStyle = {
       fontSize: FONT_SIZES.find(size => size.label === 'Middle').value,
       color: currentTextStyle.value.color
     };
+    // 描述文本框宽度设置,可根据需要调整
     const descWidth = 600;
     const titleHeight = calculateTextHeight(title, titleWidth, titleStyle);
+
+    // 添加描述文本框
+    // x: 描述水平位置,默认在图片右侧75%处居中,可修改比例调整位置
+    // y: 描述垂直位置,默认在标题下方40px,可调整间距
+    // width: 文本框宽度,默认600px
+    // height: 根据内容自动计算,可通过修改calculateTextHeight()调整行高等
     drawElements.value.push(createTextElement({
       x: imageElement.naturalWidth * 0.75 - descWidth / 2,
       y: 40 + titleHeight,
@@ -1290,7 +1301,8 @@ const queryImage = async () => {
   };
   queryPromises.push(overallAnalysis());
 
-  // 添加每个框的分析 Promise
+  // 添加每个标注框的分析 Promise
+  // 计算图片缩放比例
   const scaleX = imageElement.naturalWidth / canvasImage.value.$el.offsetWidth * ratio;
   const scaleY = imageElement.naturalHeight / canvasImage.value.$el.offsetHeight * ratio;
   const rect = canvasImage.value.$el.getBoundingClientRect();
@@ -1308,7 +1320,7 @@ const queryImage = async () => {
       ctx.drawImage(imageElement, 0, 0, tempCanvas.width, tempCanvas.height);
       ctx.lineWidth = 2;
 
-      // 转换坐标和尺寸到实际图片大小
+      // 转换标注框坐标和尺寸到实际图片大小
       const scaledX = (box.x - offsetX) * scaleX;
       const scaledY = (box.y - offsetY) * scaleY;
       const scaledWidth = box.width * scaleX;
@@ -1321,11 +1333,18 @@ const queryImage = async () => {
       const result = await analyzeWithOpenAI(dataUrl, customBoxPrompt.value);
       const { content } = result;
 
+      // 标注框说明文本样式设置
       const elementStyle = {
         fontSize: FONT_SIZES.find(size => size.label === 'Middle').value,
         color: currentTextStyle.value.color
       };
 
+      // 标注框说明文本框设置
+      // elementWidth: 文本框宽度,默认200px,可调整
+      // x: 文本框水平位置,默认在标注框中心,可修改定位方式
+      // y: 文本框垂直位置,默认在标注框下方10px,可调整间距
+      // width: 文本框宽度
+      // height: 根据内容自动计算,可通过修改calculateTextHeight()调整行高等
       const elementWidth = 200;
       const x = box.x + box.width / 2 - elementWidth / 2;
       const y = box.y + box.height / 2 + 10;
