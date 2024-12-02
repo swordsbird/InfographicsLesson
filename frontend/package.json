@@ -9,8 +9,15 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@mdi/font": "7.4.47",
+    "@mdi/font": "^7.4.47",
+    "axios": "^1.7.8",
+    "d3": "^7.9.0",
+    "d3-node": "^4.0.1",
+    "onnxruntime-web": "^1.20.1",
+    "pako": "^2.1.0",
     "roboto-fontface": "*",
+    "sharp": "^0.33.5",
+    "text-to-svg": "^3.1.5",
     "vue": "^3.4.31",
     "vue-draggable-next": "^2.2.1",
     "vuedraggable": "^2.24.3",

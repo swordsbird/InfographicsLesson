@@ -1,6 +1,19 @@
 <template>
   <!-- 主内容区 -->
-  <v-main class="bg-white main-container">
+  <v-main class="bg-grey-lighten-4 main-container">
+    <div 
+      v-if="analyzing || queryImageStatus" 
+      class="loading-overlay"
+    >
+      <v-progress-circular
+        indeterminate
+        color="primary"
+        size="64"
+      ></v-progress-circular>
+      <div class="loading-text mt-4">
+        {{ analyzing ? '正在检测视觉元素...' : '正在生成解释...' }}
+      </div>
+    </div>
     <div class="content-wrapper">
       <!-- 左侧边栏 - 20% -->
       <div class="left-sidebar">
@@ -11,7 +24,7 @@
               v-model="searchQuery"
               prepend-inner-icon="mdi-magnify"
               variant="outlined"
-              placeholder="搜索图片"
+              placeholder="搜索图表"
               hide-details
               density="comfortable"
               bg-color="white"
@@ -66,242 +79,460 @@
       <!-- 中间画布区域 - 60% -->
       <div class="canvas-container" @click="handleCanvasClick">
         <!-- 浮动工具栏 -->
-        <div 
-          class="toolbox"
-          :style="{
-            left: `${toolboxPosition.x}px`,
-            top: `${toolboxPosition.y}px`
-          }"
-          @mousedown.stop="startToolboxDrag"
-        >
-          <div class="toolbox-handle">
-            <v-icon size="small" color="white">mdi-drag</v-icon>
-          </div>
-          
-          <div class="toolbox-content">
-            <!-- 工具选择 -->
-            <v-btn-toggle 
-              v-model="currentMode" 
-              mandatory 
-              density="comfortable"
-              rounded="lg"
-              class="toolbox-buttons mb-2"
-            >
-              <v-btn 
-                :value="ELEMENT_TYPES.BOUNDING_BOX" 
-                :class="{ 'active': currentMode === ELEMENT_TYPES.BOUNDING_BOX }"
-              >
-                <v-icon>mdi-vector-rectangle</v-icon>
-                <span class="ml-2">框选</span>
-              </v-btn>
-              <v-btn 
-                :value="ELEMENT_TYPES.TEXT" 
-                :class="{ 'active': currentMode === ELEMENT_TYPES.TEXT }"
-              >
-                <v-icon>mdi-format-text</v-icon>
-                <span class="ml-2">文本</span>
-              </v-btn>
-              <v-btn
-                :value="ELEMENT_TYPES.PICTOGRAM"
-                :class="{ 'active': currentMode === ELEMENT_TYPES.PICTOGRAM }"
-              >
-                <v-icon>mdi-image</v-icon>
-                <span class="ml-2">图标</span>
-              </v-btn>
-              <v-btn
-                :value="ELEMENT_TYPES.OTHER"
-                :class="{ 'active': currentMode === ELEMENT_TYPES.OTHER }"
-              >
-                <v-icon>mdi-shape</v-icon>
-                <span class="ml-2">其他</span>
-              </v-btn>
-            </v-btn-toggle>
-            
-            <div class="color-picker" v-if="currentMode === ELEMENT_TYPES.TEXT">
-              <div class="color-circles">
-                <div
-                  v-for="color in TEXT_COLORS"
-                  :key="color.value"
-                  class="color-circle"
-                  :class="{ 'active': currentTextColor === color.value }"
-                  :style="{ 
-                    backgroundColor: color.value,
-                    border: '2px solid #ddd'
-                  }"
-                  @click="handleColorSelect(color.value)"
-                ></div>
-              </div>
-            </div>
-            
-            <div class="pictogram-picker" v-if="currentMode === ELEMENT_TYPES.PICTOGRAM">
-              <div class="pictogram-circles d-flex">
-                <div
-                  v-for="pictogram in PICTOGRAMS" 
-                  :key="pictogram.value"
-                  class="pictogram-circle mx-1"
-                  :class="{ 'active': currentPictogram === pictogram.value }"
-                  :style="{ border: '2px solid #ddd' }"
-                  @click="handlePictogramSelect(pictogram.value)"
-                >
-                  <div class="pictogram-svg" v-html="pictogram.value" style="width: 36px; height: 36px;"></div>
-                </div>
-              </div>
-            </div>
-          </div>
+        <div class="floating-button">
+          <v-btn
+            icon="mdi-eye"
+            size="small"
+            variant="tonal"
+            @click="toggleElementsVisibility"
+            :color="elementsVisible ? 'dark' : 'grey'"
+            style="position: fixed; top: 80px; right: calc(25% + 30px); z-index: 100;"
+          ></v-btn>
         </div>
 
         <!-- 画布 -->
         <div 
           class="canvas-wrapper position-relative" 
           ref="canvasRef" 
+          :style="{
+            'padding-top': selectedImage && imageRatio > 0.8 ? '200px' : '100px',
+            'padding-bottom': selectedImage && imageRatio > 0.8 ? '200px' : '100px'
+          }"
           @dblclick="handleCanvasDoubleClick"
+          @click="selectElement($event, null)"
         >
-          <v-img
-            :src="selectedImage"
-            cover
-            class="canvas-image"
-            :draggable="false"
-          ></v-img>
-          <!-- 渲染所有可绘制元素 -->
-          <template v-for="(element, index) in drawElements" :key="element.id">
-            <div 
-              class="draw-element"
-              :class="{
-                'selected': selectedElementIndex === index,
-                'bounding-box': element.type === ELEMENT_TYPES.BOUNDING_BOX,
-                'text-element': element.type === ELEMENT_TYPES.TEXT,
-                'pictogram-element': element.type === ELEMENT_TYPES.PICTOGRAM
-              }"
-              :data-index="index"
-              :style="getElementStyle(element, index)"
-            >
-              <!-- 标题栏 - 可拖动 -->
+          <!-- 添加占位提示 -->
+          <div v-if="!selectedImage" class="canvas-placeholder" style="display: flex; flex-direction: column; align-items: center; justify-content: center;">
+            <v-icon size="64" color="grey">mdi-image-outline</v-icon>
+            <div class="placeholder-text" style="text-align: center;">请在左边栏选择一张信息图表</div>
+          </div>
+
+          <!-- 原有的画布内容 -->
+          <template v-else>
+            <v-img
+              :src="selectedImage"
+              cover
+              ref="canvasImage"
+              class="canvas-image"
+              :draggable="false"
+              @load="handleImageLoad"
+            ></v-img>
+            <!-- 渲染所有可绘制元素 -->
+            <template v-for="(element, index) in drawElements" :key="element.id">
+              <!-- 元素内容 -->
               <div 
-                class="element-title"
-                @mousedown="startTitleDrag($event, index)"
+                class="draw-element"
+                :class="{
+                  'selected': selectedElementId === element.id,
+                  'text-element': element.type === ELEMENT_TYPES.TEXT,
+                  'pictogram-element': element.type === ELEMENT_TYPES.PICTOGRAM
+                }"
+                :data-index="element.index"
+                :style="getElementStyle(element)"
               >
-                <span class="element-label">
-                  {{ element.type === ELEMENT_TYPES.BOUNDING_BOX ? 'BB' : 
-                     element.type === ELEMENT_TYPES.TEXT ? 'TEXT' : 'ICON' }}{{ index + 1 }}
-                </span>
-                <div class="delete-button" @click.stop="deleteElement(index)">
-                  <v-icon size="small" color="white">mdi-close</v-icon>
-                </div>
-              </div>
-              
-              <!-- 文本内容 - 仅文本元素显示 -->
-              <template v-if="element.type === ELEMENT_TYPES.TEXT">
+                <!-- 标题栏 - 可拖动 -->
                 <div 
-                  v-if="isEditing && editingIndex === index"
+                  class="element-title"
+                  v-if="elementsVisible"
+                  :style="{ 'background-color': getBoxType(element.type).labelBgColor }"
+                  @mousedown="startTitleDrag($event, element.id)"
+                >
+                  <span class="element-label">
+                    {{ element.id }}
+                  </span>
+                  <div class="delete-button" @click.stop="deleteElement(element)">
+                    <v-icon size="small" color="white">mdi-close</v-icon>
+                  </div>
+                </div>
+                
+                <!-- 内容区域 -->
+                <div v-if="element.type === ELEMENT_TYPES.TEXT && isEditing && editingElementId === element.id"
                   class="text-content editing-text"
                   contenteditable="true"
-                  @blur="saveTextEdit($event, index)"
-                  @keydown.enter.prevent="saveTextEdit($event, index)"
+                  @blur="saveTextEdit($event, element.id)"
+                  @keydown.enter.prevent="saveTextEdit($event, element.id)"
                   :style="{
                     color: element.style.color,
                     fontSize: element.style.fontSize,
-                    fontStyle: element.style.fontStyle
+                    fontWeight: element.style.fontWeight
                   }"
                   v-text="element.content"
                 ></div>
-                <div 
-                  v-else 
+                <div v-else-if="element.type === ELEMENT_TYPES.TEXT"
                   class="text-content"
-                  @dblclick="handleTextDoubleClick($event, index)"
+                  @dblclick="handleTextDoubleClick($event, element.id)"
                   :style="{
                     color: element.style.color,
                     fontSize: element.style.fontSize,
-                    fontStyle: element.style.fontStyle
+                    fontWeight: element.style.fontWeight
                   }"
                 >{{ element.content }}</div>
-              </template>
+                <div v-else-if="element.type === ELEMENT_TYPES.PICTOGRAM" 
+                  class="pictogram-content" 
+                  v-html="element.content">
+                </div>
+                <div v-if="elementsVisible" class="resize-handle" @mousedown.stop="startResize($event, element.id)"></div>
+              </div>
 
-              <!-- 图标内容 - 仅图标元素显示 -->
-              <template v-if="element.type === ELEMENT_TYPES.PICTOGRAM">
-                <div class="pictogram-content" v-html="element.content"></div>
-              </template>
-              <div class="resize-handle" @mousedown.stop="startResize($event, index)"></div>
-            </div>
+              <!-- 独立的边框box element.type === ELEMENT_TYPES.BOUNDING_BOX ||  -->
+              <div 
+                v-if="elementsVisible"
+                class="element-box"
+                :class="{
+                  'selected': selectedElementId === element.id,
+                  'bounding-box': element.type === ELEMENT_TYPES.BOUNDING_BOX
+                }"
+                :style="getBoxStyle(element)"
+              ></div>
+            </template>
           </template>
         </div>
       </div>
 
-      <!-- 右侧边栏 - 20% -->
+      <!-- 右侧边栏 -->
       <div class="right-sidebar">
-        <!-- 分析按钮区域 -->
-        <div class="analyze-section">
-          <v-btn
-            block
-            color="gray"
-            size="large"
-            class="ma-4"
-            :loading="analyzing"
-            :disabled="!selectedImage"
-            @click="analyzeImage"
-            prepend-icon="mdi-magnify"
-          >
-            {{ analyzing ? '分析中...' : '分析图片' }}
-          </v-btn>
-          <v-divider></v-divider>
-        </div>
-
-        <!-- 使用 VueDraggableNext -->
-        <div class="detection-list">
-          <VueDraggableNext 
-            :list="drawElements"
-            item-key="id"
-            handle=".drag-handle"
-            @end="handleDragEnd"
-            tag="div"
-            class="dragArea"
-          >
-            <template #item="{element, index}">
-              <v-list-item
-                class="box-list-item mb-2"
-                :class="{ 'selected-box': selectedElementIndex === index }"
-                @click="selectedElementIndex = index"
-              >
-                <!-- 拖拽手柄 -->
-                <template v-slot:prepend>
-                  <v-icon 
-                    class="drag-handle mr-2"
-                    color="grey"
-                    size="small"
-                  >
-                    mdi-drag
-                  </v-icon>
+        <!-- 工具栏 -->
+        <div class="toolbox">
+          <div class="toolbox-content">
+            <div class="text-white text-subtitle-1 mb-4">添加/编辑元素</div>
+            <v-btn-toggle v-model="currentMode">
+              <!-- 工具选择 -->
+                <v-btn 
+                  :value="ELEMENT_TYPES.BOUNDING_BOX" 
+                  :class="{ 'active': currentMode === ELEMENT_TYPES.BOUNDING_BOX }"
+                >
+                  <v-icon>mdi-vector-rectangle</v-icon>
+                </v-btn>
+                <v-btn 
+                  :value="ELEMENT_TYPES.TEXT" 
+                  :class="{ 'active': currentMode === ELEMENT_TYPES.TEXT }"
+                >
+                  <v-icon>mdi-format-text</v-icon>
+                </v-btn>
+                <!--
+                <v-btn
+                  :value="ELEMENT_TYPES.PICTOGRAM"
+                  :class="{ 'active': currentMode === ELEMENT_TYPES.PICTOGRAM }"
+                >
+                  <v-icon>mdi-image</v-icon>
+                </v-btn>
+                <v-btn
+                  :value="ELEMENT_TYPES.OTHER"
+                  :class="{ 'active': currentMode === ELEMENT_TYPES.OTHER }"
+                >
+                  <v-icon>mdi-shape</v-icon>
+                </v-btn>
+                -->
+              </v-btn-toggle>
+            
+            
+            <div class="pictogram-picker" v-if="currentMode === ELEMENT_TYPES.PICTOGRAM">
+              <div class="pictogram-circles d-flex my-2">
+                <div
+                  v-for="pictogram in PICTOGRAMS" 
+                  :key="pictogram.label"
+                  class="pictogram-circle mx-1"
+                  :class="{ 'active': currentPictogram.value.label === pictogram.label }"
+                  @click="handlePictogramSelect(pictogram)"
+                >
+                  <div class="pictogram-svg" v-html="pictogram.value" style=""></div>
+                </div>
+              </div>
+            </div>
+            <div class="text-style-picker" v-if="currentMode === ELEMENT_TYPES.TEXT">
+              <div class="tool-section">
+                <div class="tool-label">Color</div>
+                <div class="color-circles justify-start">
                   <div
-                    class="box-color-mark"
-                    :style="{
-                      backgroundColor: element.type === ELEMENT_TYPES.BOUNDING_BOX 
-                        ? element.style.border.split(' ')[2] 
-                        : '#666666'
-                    }"
+                    v-for="color in TEXT_COLORS"
+                    :key="color.value"
+                    class="color-circle"
+                    :class="{ 'active': currentTextStyle.color === color.value }"
+                    :style="{ backgroundColor: color.value }"
+                    @click="handleStyleSelect('color', color.value)"
                   ></div>
-                </template>
-                <v-list-item-title class="text-black">
-                  {{ element.type === ELEMENT_TYPES.BOUNDING_BOX ? `BB${index + 1}` : '文本' }}
-                </v-list-item-title>
-              </v-list-item>
-            </template>
-          </VueDraggableNext>
-          
-          <div v-if="drawElements.length === 0" class="no-results">
-            <div class="text-grey text-center pa-4">
-              双击画布添加标注框<br>或点击分析按钮自动生成
+                </div>
+              </div>
+              
+              <div class="tool-section">
+                <div class="tool-label">Font Size</div>
+                <div class="font-size-toggle">
+                  <v-btn
+                    v-for="size in FONT_SIZES"
+                    :key="size.value"
+                    :class="{
+                      'v-btn--active': selectedElement?.style?.fontSize === size.value
+                    }"
+                    @click="updateFontSize(size.value)"
+                    density="compact"
+                  >
+                    <span :style="{ fontSize: size.value }">A</span>
+                  </v-btn>
+                </div>
+              </div>
+
+              <div class="tool-section">
+                <div class="tool-label">Font Style</div>
+                <div class="font-style-toggle">
+                  <v-btn
+                    v-for="style in FONT_STYLES"
+                    :key="style.value"
+                    :class="{
+                      'v-btn--active': selectedElement?.style?.fontWeight === style.value
+                    }"
+                    @click="updateFontStyle(style.value)"
+                    variant="text"
+                    density="compact"
+                  >
+                    <v-icon>
+                      {{ style.value === 'bold' ? 'mdi-format-bold' : 'mdi-format-text' }}
+                    </v-icon>
+                  </v-btn>
+                </div>
+              </div>
             </div>
           </div>
+        </div>
+
+        <!-- 分析部分 -->
+        <div class="analyze-section">
+          <!-- 添加分析按钮 -->
+          <div class="d-flex gap-2 mb-4 mx-2">
+            <v-btn
+              color="dark"
+              density="comfortable"
+              :loading="analyzing"
+              @click="analyzeImage"
+            >
+              检测元素
+            </v-btn>
+            <v-btn
+              color="error"
+              density="comfortable"
+              @click="clearElements"
+              :disabled="!drawElements.length"
+            >
+              清空元素
+            </v-btn>
+          </div>
+          <div class="detection-list" style="max-height: 150px; overflow-y: auto;">
+            <!-- 检测结果列表 -->
+            <v-chip
+              v-for="(box, index) in drawElements"
+              :key="box.id"
+              size="small"
+              :variant="selectedElementId === box.id ? 'flat' : 'tonal'"
+              @click="selectElement($event, box)"
+              @click:close="deleteElement(box)"
+              class="ma-1" label closable draggable
+            >
+              {{ `${SHORT_ELEMENT_TYPES[box.type]}${box.index}` }}
+            </v-chip>
+          </div>
+          <div class="divider my-2" style="border-top: 1px solid rgba(0, 0, 0, 0.12);"></div>
+          <div class="d-flex align-center gap-2 mb-2" style="position: relative;">
+            <textarea
+              v-model="customOverallPrompt"
+              placeholder="请输入提示词，用于指导信息图整体理解"
+              rows="6"
+              class="prompt-textarea"
+            ></textarea>
+            <v-btn
+              color="dark"
+              size="small"
+              v-if="customOverallPrompt == ''"
+              @click="useDefaultOverallPrompt"
+              style="position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);"
+            >
+              使用样例提示词
+            </v-btn>
+          </div>
+
+          <div class="d-flex align-center gap-2 mb-2" style="position: relative;">
+            <textarea
+              v-model="customBoxPrompt"
+              placeholder="请输入提示词，用于指导信息图元素理解"
+              rows="6"
+              class="prompt-textarea"
+            ></textarea>
+            <v-btn
+              color="dark"
+              size="small"
+              v-if="customBoxPrompt == ''"
+              @click="useDefaultBoxPrompt"
+              style="position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);"
+            >
+              使用样例提示词
+            </v-btn>
+          </div>
+          <!-- 添加导出按钮 -->
+          <v-btn
+            color="dark"
+            density="comfortable"
+            class="mb-2 mx-2"
+            :loading="queryImageStatus"
+            :disabled="!drawElements.some(el => el.type === ELEMENT_TYPES.BOUNDING_BOX)"
+            @click="queryImage"
+          >
+            生成解释
+          </v-btn>
+          <div class="d-flex gap-2">
+            <v-btn
+              color="dark"
+              density="comfortable"
+              class="mb-2"
+              @click="showHowToInteractDialog = true"
+            >
+              如何交互？
+            </v-btn>
+            <v-btn
+              color="dark"
+              density="comfortable" 
+              class="mb-2"
+              @click="showHowToModifyDialog = true"
+            >
+              如何修改代码？
+            </v-btn>
+          </div>
+
         </div>
       </div>
     </div>
   </v-main>
+<v-dialog v-model="showHowToInteractDialog" max-width="600px">
+  <v-card>
+    <v-card-title class="text-h5 pa-4">
+      如何交互使用？
+    </v-card-title>
+    <v-card-text class="pa-4">
+      <div class="text-body-1">
+        <p class="mb-4">本工具提供以下交互功能：</p>
+        
+        <p class="font-weight-bold mb-2">1. 信息图表管理</p>
+        <p class="mb-4">
+          • 左侧栏可以浏览和选择已有图表<br>
+          • 点击上传按钮可以添加新的图表<br>
+          • 搜索框可以快速查找图表
+        </p>
+
+        <p class="font-weight-bold mb-2">2. 元素检测</p>
+        <p class="mb-4">
+          • 点击"检测元素"自动识别图表中的关键区域<br>
+          • 使用右上角的眼睛图标可以显示/隐藏标注框<br>
+          • 点击"清空元素"可以删除所有标注
+        </p>
+
+        <p class="font-weight-bold mb-2">3. 编辑标注框</p>
+        <p class="mb-4">
+          • 双击画布：创建新的标注框<br>
+          • 拖动标题栏：移动标注框位置<br>
+          • 拖动右下角：调整标注框大小<br>
+          • 点击关闭按钮：删除当前标注框<br>
+          这一步主要是为了纠正标注框位置，方便后续生成解释
+        </p>
+
+        <p class="font-weight-bold mb-2">4. 生成解释</p>
+        <p class="mb-4">
+          • 调整好标注框后点击"生成解释"<br>
+          • 系统会分析整体内容和每个标注区域<br>
+          • 自动生成标题、描述和详细解释
+        </p>
+
+        <p class="font-weight-bold mb-2">5. 编辑文本</p>
+        <p class="mb-4">
+          • 双击文本：进入编辑模式<br>
+          • 右侧工具栏：调整字体大小、颜色和粗细<br>
+          • 拖动文本框标题栏：调整文本位置<br>
+          • Enter键：完成编辑
+        </p>
+        <p class="text-caption">
+          提示：首次使用建议先查看"如何修改"了解详细的编辑功能
+        </p>
+      </div>
+    </v-card-text>
+    <v-card-actions class="pa-4">
+      <v-spacer></v-spacer>
+      <v-btn
+        color="dark"
+        variant="text"
+        @click="showHowToInteractDialog = false"
+      >
+        关闭
+      </v-btn>
+      </v-card-actions>
+    </v-card>
+  </v-dialog>
+  <v-dialog v-model="showHowToModifyDialog" max-width="600px">
+  <v-card>
+    <v-card-title class="text-h5 pa-4">
+      如何修改代码？
+    </v-card-title>
+    <v-card-text class="pa-4">
+      <div class="text-body-1">
+        <p class="mb-4">您可以通过以下方式修改提示词或者代码：</p>
+        
+        <p class="font-weight-bold mb-2">1. 修改提示词</p>
+        <p class="mb-4">
+          • 整体提示词：引导AI理解图表的整体主题和重点<br>
+          • 元素提示词：引导AI解读每个标注区域的具体内容<br>
+          • 点击"使用样例提示词"可以参考预设的提示语
+        </p>
+
+        <p class="font-weight-bold mb-2">2. 修改文本框出现位置</p>
+        <p class="mb-4">
+          在 src/components/UnderstandView.vue 中的 queryImage 函数（约1245-1345行）记录了文本框的位置计算逻辑：<br>
+          • 标题文本框：位于图表上方中央<br>
+          • 描述文本框：位于标题下方<br>
+          • 元素说明文本框：位于对应标注框下方<br><br>
+          同学可以通过修改这些计算逻辑来：<br>
+          • 调整文本框的初始位置<br>
+          • 优化文本布局算法<br>
+          • 设计防止文本框重叠的策略<br>
+          • 根据图表内容动态调整文本颜色：
+            - 分析标注框所在区域的背景颜色
+            - 深色背景区域使用白色文字
+            - 浅色背景区域使用黑色文字
+            - 可以使用 Canvas API 获取图表的像素颜色
+        </p>
+
+        <p class="text-caption mt-4">
+          注意：修改后需要重新点击"生成解释"来更新AI分析结果。建议先调整好标注框位置再生成解释。
+        </p>
+      </div>
+    </v-card-text>
+    <v-card-actions class="pa-4">
+      <v-spacer></v-spacer>
+      <v-btn
+        color="dark"
+        variant="text"
+        @click="showHowToModifyDialog = false"
+      >
+        关闭
+      </v-btn>
+    </v-card-actions>
+  </v-card>
+  </v-dialog>
 </template>
 <script setup>
-import { ref, onMounted, onUnmounted, onBeforeUnmount, watch, nextTick, computed } from 'vue';
-import { VueDraggableNext } from 'vue-draggable-next'
-
+import { ref, onMounted, onUnmounted, watch, nextTick, computed } from 'vue';
+import { analyzeWithOpenAI, defaultOverallPrompt, defaultBoxPrompt } from './utils/llm';
+import { createTextElement, createPictogramElement, createBoundingBox, ELEMENT_TYPES, SHORT_ELEMENT_TYPES } from './utils/elements';
+import { SEGMENT_API, SEGMENT_BOX_API } from './utils/OPENAI_API';
 // 使用 glob 导入所有图片
 const imageModules = import.meta.glob('../assets/images/*.png', { eager: true })
+const handleImageLoad = (event) => {
+  // 获取图片实际尺寸
+  const img = event.target;
+  const canvas = canvasRef.value;
+  
+  // 更新画布包装器的高度以匹配图片
+  if (canvas && img && img.naturalHeight) {
+    // 使用图片的自然高度
+    const imgRatio = img.naturalHeight / img.naturalWidth;
+    const canvasWidth = canvas.offsetWidth;
+    canvas.style.height = `${canvasWidth * imgRatio}px`;
+  }
+};
 
 const images = ref(
   Object.entries(imageModules).map(([path, module], index) => ({
@@ -311,8 +542,12 @@ const images = ref(
 );
 
 const selectedImage = ref('');
-
+const imageRatio = ref(0);
 const fileInput = ref(null);
+const customOverallPrompt = ref("");
+const customBoxPrompt = ref("");
+const showHowToInteractDialog = ref(false);
+const showHowToModifyDialog = ref(false);
 
 // 触发文件选择
 const triggerFileInput = () => {
@@ -344,126 +579,141 @@ const handleFileUpload = (event) => {
   event.target.value = '';
 };
 
-// 元素类型常量
-const ELEMENT_TYPES = {
-  BOUNDING_BOX: 'boundingBox',
-  TEXT: 'text',
-  PICTOGRAM: 'pictogram',
-  OTHER: 'other'
-};
-
 // 统一管理所有的 ref
 const canvasRef = ref(null);
+const canvasImage = ref(null);
 const drawElements = ref([]);
-const selectedElementIndex = ref(-1);
+const selectedElementId = ref(null);
+const selectedElement = computed(() => drawElements.value.find(el => el.id === selectedElementId.value));
 const currentMode = ref(ELEMENT_TYPES.BOUNDING_BOX);
 const searchQuery = ref(null);
 const isDragging = ref(false);
 const isResizing = ref(false);
 const dragOffset = ref({ x: 0, y: 0 });
 const analyzing = ref(false);
-
-const toolboxPosition = ref({ x: 20, y: 20 });
-const isToolboxDragging = ref(false);
-const toolboxDragOffset = ref({ x: 0, y: 0 });
-
-// 工具栏拖动
-const startToolboxDrag = (event) => {
-  isToolboxDragging.value = true;
-  toolboxDragOffset.value = {
-    x: event.clientX - toolboxPosition.value.x,
-    y: event.clientY - toolboxPosition.value.y
-  };
-  
-  document.addEventListener('mousemove', handleToolboxDrag);
-  document.addEventListener('mouseup', stopToolboxDrag);
-};
-
-const handleToolboxDrag = (event) => {
-  if (!isToolboxDragging.value) return;
-  
-  toolboxPosition.value = {
-    x: event.clientX - toolboxDragOffset.value.x,
-    y: event.clientY - toolboxDragOffset.value.y
-  };
-};
-
-const stopToolboxDrag = () => {
-  isToolboxDragging.value = false;
-  document.removeEventListener('mousemove', handleToolboxDrag);
-  document.removeEventListener('mouseup', stopToolboxDrag);
-};
-
+const queryImageStatus = ref(false);
+const elementsVisible = ref(true);
 // 颜色选项简化为圆形选择器
 const TEXT_COLORS = [
   { value: '#000000' }, // 黑色
   { value: '#FFFFFF' }, // 白色
-  { value: '#FF0000' }, // 红色
-  { value: '#1976D2' }  // 蓝色
+  { value: '#1f77b4' }, // 蓝色
+  { value: '#ff7f0e' }, // 橙色
+  { value: '#2ca02c' }, // 绿色
+  { value: '#d62728' }, // 红色
+  { value: '#9467bd' } // 紫色
 ];
 
 const PICTOGRAMS = [
   {
     value: `<svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="40" fill="white"/></svg>`,
-    label: '圆形'
+    label: 'Circle'
   },
   {
     value: `<svg viewBox="0 0 100 100"><rect x="10" y="10" width="80" height="80" fill="white"/></svg>`, 
-    label: '正方形'
+    label: 'Square'
   },
   {
     value: `<svg viewBox="0 0 100 100">
       <path d="M50 10 L61 39 L92 39 L67 57 L77 86 L50 69 L23 86 L33 57 L8 39 L39 39 Z" fill="white"/>
     </svg>`,
-    label: '星形'
+    label: 'Star'
   }
 ]
 
-const currentTextColor = ref(TEXT_COLORS[0].value);
+// 字体大小选项
+const FONT_SIZES = [
+  { label: 'Small', value: '12px' },
+  { label: 'Middle', value: '16px' },
+  { label: 'Large', value: '20px' },
+  { label: 'Extra Large', value: '24px' }
+];
+
+// 字体样式选项
+const FONT_STYLES = [
+  { label: 'Regular', value: 'normal' },
+  { label: 'Bold', value: 'bold' }
+];
+
+// 统一的文本样式状态
+const currentTextStyle = ref({
+  color: TEXT_COLORS[0].value,
+  fontSize: FONT_SIZES.find(size => size.label === 'Middle').value,
+  fontWeight: 'normal'
+});
+
+// 统一的样式处理函数
+const handleStyleSelect = (property, value) => {
+  // 更新当前样式状态
+  currentTextStyle.value[property] = value;
+
+  // 如果有选中的文本元素，更新其样式
+  if (selectedElementId.value !== null) {
+    const element = drawElements.value.find(el => el.id === selectedElementId.value);
+    if (element && element.type === ELEMENT_TYPES.TEXT) {
+      element.style[property] = value;
+    }
+  }
+};
+
+const toggleElementsVisibility = () => {
+  elementsVisible.value = !elementsVisible.value;
+};
 
 // 处理画布双击
 const handleCanvasDoubleClick = (event) => {
-  // 检查是否点击了文本内容区域
-  if (event.target.classList.contains('text-content')) {
-    return; // 如果是文本内容区域，不创建新元素
-  }
-
+  if (event.target.classList.contains('text-content')) return;
   if (!canvasRef.value) return;
   
   const rect = canvasRef.value.getBoundingClientRect();
   const x = event.clientX - rect.left;
   const y = event.clientY - rect.top;
+  
+  const elementIndex = drawElements.value.filter(
+    el => el.type === currentMode.value
+  ).length;
+
   let newElement;
   switch (currentMode.value) {
     case ELEMENT_TYPES.TEXT:
-      newElement = createTextElement(x, y);
+      newElement = createTextElement({
+        x,
+        y,
+        index: elementIndex,
+        content: '双击编辑文本',
+        style: { ...currentTextStyle.value }
+      });
       break;
     case ELEMENT_TYPES.PICTOGRAM:
-      newElement = createPictogramElement(x, y);
-      break;
-    case ELEMENT_TYPES.OTHER:
-      newElement = createOtherElement(x, y);
+      newElement = createPictogramElement({
+        x,
+        y,
+        index: elementIndex,
+        content: currentPictogram.value.value
+      });
       break;
     default:
-      newElement = createBoundingBox(x, y);
+      newElement = createBoundingBox({
+        x,
+        y,
+        index: elementIndex
+      });
   }
   drawElements.value.push(newElement);
 };
 
 // 状态变量
-const mouseDownPos = ref({ x: 0, y: 0 });
-const dragStartTime = ref(0);
 const isEditing = ref(false);
-const editingIndex = ref(-1);
-const currentPictogram = ref(PICTOGRAMS[0].value);
+const editingElementId = ref(null);
+const currentPictogram = ref(PICTOGRAMS[0]);
 // 处理拖动
 const handleDrag = (event) => {
   if (!isDragging.value) return;
 
-  const index = selectedElementIndex.value;
-  if (index === -1) return;
+  const id = selectedElementId.value;
+  if (id === null) return;
   
-  const element = drawElements.value[index];
+  const element = drawElements.value.find(el => el.id === id);
   const newX = event.clientX - dragOffset.value.x;
   const newY = event.clientY - dragOffset.value.y;
   
@@ -497,24 +747,18 @@ const stopDrag = (event) => {
 };
 
 // 处理元素点击选中
-const handleElementClick = (index) => {
-  if (selectedElementIndex.value === index) {
-    selectedElementIndex.value = -1;
-  } else {
-    selectedElementIndex.value = index;
-    // 根据选中元素类型切换工具栏
-    const selectedElement = drawElements.value[index];
-    currentMode.value = selectedElement.type;
-  }
+const handleElementClick = (event, elementId) => {
+  event.stopPropagation();
+  selectedElementId.value = elementId;
 };
 
 // 处理文本双击编辑
-const handleTextDoubleClick = (event, index) => {
+const handleTextDoubleClick = (event, id) => {
   if (!event.target.classList.contains('text-content')) return;
   
   event.stopPropagation();
   isEditing.value = true;
-  editingIndex.value = index;
+  editingElementId.value = id;
   
   nextTick(() => {
     const textInput = document.querySelector('.editing-text');
@@ -525,38 +769,25 @@ const handleTextDoubleClick = (event, index) => {
 };
 
 // 保存文本编辑
-const saveTextEdit = (event, index) => {
-  const element = drawElements.value[index];
+const saveTextEdit = (event, id) => {
+  const element = drawElements.value.find(el => el.id === id);
   element.content = event.target.innerText;
   isEditing.value = false;
-  editingIndex.value = -1;
+  editingElementId.value = null;
   saveBoxesToStorage(selectedImage.value); // 保存到存储
 };
 
 const handlePictogramSelect = (pictogram) => {
   currentPictogram.value = pictogram;
 };
-
-// 更新文本颜色处理
-const handleColorSelect = (color) => {
-  if (selectedElementIndex.value !== -1) {
-    // 如果有选中的文本元素，更新其颜色
-    const element = drawElements.value[selectedElementIndex.value];
-    if (element.type === ELEMENT_TYPES.TEXT) {
-      element.style.color = color;
-    }
-  }
-  // 无论是否有选中元素，都更新当前文本颜色
-  currentTextColor.value = color;
+const useDefaultOverallPrompt = () => {
+  customOverallPrompt.value = defaultOverallPrompt;
 };
 
-// 更新文本内容
-const updateTextContent = (event, index) => {
-  const element = drawElements.value[index];
-  if (element.type === ELEMENT_TYPES.TEXT) {
-    element.content = event.target.innerText;
-  }
+const useDefaultBoxPrompt = () => {
+  customBoxPrompt.value = defaultBoxPrompt;
 };
+
 // 定义可能的样式配置
 const boxStyles = [
   {
@@ -589,7 +820,7 @@ const boxStyles = [
   }
 ];
 
-const getBoxStyle = (type) => {
+const getBoxType = (type) => {
   if (type === ELEMENT_TYPES.BOUNDING_BOX) {
     return boxStyles[0];
   } else if (type === ELEMENT_TYPES.TEXT) {
@@ -602,123 +833,55 @@ const getBoxStyle = (type) => {
   return boxStyles[0];
 };
 
-const boundingBoxes = ref([]);
-
-const draggingIndex = ref(-1);
 const canvasSize = ref({ width: 0, height: 0 });
-
-const resizingIndex = ref(-1);
-const resizeStartPos = ref({ x: 0, y: 0 });
-const originalSize = ref({ width: 0, height: 0 });
-const originalPos = ref({ x: 0, y: 0 });
-
-// 存储所有图片的 bounding boxes
-const imageBoxesMap = ref(new Map());
-
-const selectedBoxIndex = ref(-1);
-
-// 处理拖拽结束
-const handleDragEnd = () => {
-  if (selectedImage.value) {
-    imageBoxesMap.value.set(selectedImage.value, [...drawElements.value]);
-  }
-};
-// 修改图片变化处理函数
-const handleImageChange = () => {
-  // 如果当前有元素，先保存到 localStorage
-  if (drawElements.value.length > 0) {
-    const storageKey = `boxes_${selectedImage.value}`;
-    localStorage.setItem(storageKey, JSON.stringify(drawElements.value));
-  }
-
-  // 清空当前元素
-  drawElements.value = [];
-  
-  // 从 localStorage 加载数据
-  if (selectedImage.value) {
-    const storageKey = `boxes_${selectedImage.value}`;
-    const savedData = localStorage.getItem(storageKey);
-    if (savedData) {
-      drawElements.value = JSON.parse(savedData);
-    }
-    
-    const newValue = selectedImage.value.split('/').pop();
-  }
-};
-
-// 监听选中图片的变化
-watch(selectedImage, (newImage) => {
-  if (newImage) {
-    handleImageChange();
-  }
-});
-
-// 添加新的 box
-const addBox = (event) => {
-  if (!selectedImage.value) return;
-  
-  const rect = canvasRef.value.getBoundingClientRect();
-  const x = (event.clientX - rect.left) / rect.width;
-  const y = (event.clientY - rect.top) / rect.height;
-  
-  const width = 0.2;
-  const height = 0.2;
-  
-  const newX = Math.min(Math.max(0, x - width/2), 1 - width);
-  const newY = Math.min(Math.max(0, y - height/2), 1 - height);
-  
-  const style = boxStyles[boundingBoxes.value.length % boxStyles.length];
-  
-  boundingBoxes.value.push({
-    id: Date.now(),
-    x: newX,
-    y: newY,
-    width,
-    height,
-    style: {
-      border: `2px solid ${style.borderColor}`,
-      backgroundColor: style.backgroundColor,
-      labelStyle: {
-        backgroundColor: style.labelBgColor,
-        color: 'white',
-        padding: '2px 6px',
-        borderRadius: '2px',
-        fontSize: '12px',
-        fontWeight: '500'
-      }
-    }
-  });
-  
-  imageBoxesMap.value.set(selectedImage.value, [...boundingBoxes.value]);
-};
-
-// 删除 box
-const deleteBox = (index) => {
-  boundingBoxes.value.splice(index, 1);
-  // 保存到 map
-  imageBoxesMap.value.set(selectedImage.value, [...boundingBoxes.value]);
-};
 
 // 更新画布尺寸
 const updateCanvasSize = () => {
   if (canvasRef.value) {
     const rect = canvasRef.value.getBoundingClientRect();
-    canvasSize.value = {
+    const newSize = {
       width: rect.width,
       height: rect.height
     };
+
+    // Only adjust elements if we have previous dimensions to compare against
+    if (previousCanvasSize.value.width && previousCanvasSize.value.height) {
+      const widthRatio = newSize.width / previousCanvasSize.value.width;
+      console.log(widthRatio);
+      // Adjust all elements proportionally
+      drawElements.value = drawElements.value.map(element => ({
+        ...element,
+        x: element.x * widthRatio,
+        y: element.y * widthRatio,
+        width: element.width * widthRatio,
+        height: element.height * widthRatio
+      }));
+    }
+
+    // Update canvas size state
+    canvasSize.value = newSize;
+    previousCanvasSize.value = newSize;
   }
 };
 
+// Add a debounced version of updateCanvasSize to prevent too frequent updates
+const debouncedUpdateCanvasSize = () => {
+  let timeoutId;
+  return () => {
+    clearTimeout(timeoutId);
+    timeoutId = setTimeout(updateCanvasSize, 100);
+  };
+};
+
 // 开始调整大小
-const startResize = (event, index) => {
+const startResize = (event, id) => {
   event.preventDefault();
   event.stopPropagation();
   
   isResizing.value = true;
-  selectedElementIndex.value = index;
+  selectedElementId.value = id;
   
-  const element = drawElements.value[index];
+  const element = drawElements.value.find(el => el.id === id);
   const startX = event.clientX;
   const startY = event.clientY;
   const startWidth = element.width;
@@ -740,16 +903,12 @@ const startResize = (event, index) => {
     const maxWidth = canvasRect.width - element.x;
     const maxHeight = canvasRect.height - element.y;
     
-    drawElements.value[index] = {
-      ...element,
-      width: Math.min(newWidth, maxWidth),
-      height: Math.min(newHeight, maxHeight)
-    };
+    element.width = Math.min(newWidth, maxWidth);
+    element.height = Math.min(newHeight, maxHeight);
   };
   
   const stopResize = () => {
     isResizing.value = false;
-    selectedElementIndex.value = -1;
     document.removeEventListener('mousemove', handleResize);
     document.removeEventListener('mouseup', stopResize);
   };
@@ -758,48 +917,145 @@ const startResize = (event, index) => {
   document.addEventListener('mouseup', stopResize);
 };
 
-// 修改分析函数
+
+const clearElements = () => {
+  drawElements.value = [];
+  selectedElementId.value = null;
+  saveBoxesToStorage(selectedImage.value);
+};
+
 const analyzeImage = async () => {
   if (!selectedImage.value) {
     alert('请先选择一张图片');
     return;
   }
 
+  // 获取图片元素
+  const imageElement = canvasImage.value?.$el?.querySelector('img');
+  if (!imageElement) {
+    alert('无法获取图片元素');
+    queryImageStatus.value = false;
+    return;
+  }
+
   analyzing.value = true;
-  
+
+  // 创建临时canvas
+  const tempCanvas = document.createElement('canvas');
+  const ctx = tempCanvas.getContext('2d');
+
+  // 设置临时canvas尺寸为图片实际尺寸
+  tempCanvas.width = imageElement.naturalWidth;
+  tempCanvas.height = imageElement.naturalHeight;
+
+  // 绘制原始图片
+  ctx.drawImage(imageElement, 0, 0);
+  // Get image data from canvas
+  const imageData = ctx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
+  const pixels = imageData.data;
+
+  // Create 3D array [width][height][rgb]
+  const imageArray = new Array(tempCanvas.width);
+  for (let x = 0; x < tempCanvas.width; x++) {
+    imageArray[x] = new Array(tempCanvas.height);
+    for (let y = 0; y < tempCanvas.height; y++) {
+      // Calculate position in the pixels array (4 values per pixel - r,g,b,a)
+      const pos = (y * tempCanvas.width + x) * 4;
+      // Store RGB values (skip alpha)
+      imageArray[x][y] = [
+        pixels[pos],     // R
+        pixels[pos + 1], // G 
+        pixels[pos + 2]  // B
+      ];
+    }
+  }
+
+  let result;
+  // Send POST request to segment API
   try {
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    const boxCount = Math.floor(Math.random() * 4) + 3;
-    // 获取画布尺寸
-    const canvasRect = canvasRef.value.getBoundingClientRect();
-    
-    // 生成新的 bounding boxes
-    const newBoxes = Array(boxCount).fill(null).map((_, index) => {
-      
-      // 生成合理的像素尺寸
-      const width = Math.random() * 150 + 100; // 100-250px
-      const height = Math.random() * 150 + 100; // 100-250px
-      
-      // 确保位置在画布内
-      const x = Math.random() * (canvasRect.width - width);
-      const y = Math.random() * (canvasRect.height - height);
-      const style = getBoxStyle(ELEMENT_TYPES.BOUNDING_BOX);
-      
-      return {
-        id: Date.now() + index,
-        type: ELEMENT_TYPES.BOUNDING_BOX,
-        x,
-        y,
-        width,
-        height,
-        style
-      };
+    const response = await fetch(SEGMENT_BOX_API, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        image: imageArray
+      })
     });
+
+    if (!response.ok) {
+      throw new Error(`API request failed: ${response.status}`);
+    }
+
+    result = await response.json();
+    console.log('Segmentation result:', result);
+  } catch (error) {
+    console.error('Error calling segment API:', error);
+    analyzing.value = false;
+    return;
+  }
+
+  try {
+    // Process masked images from result
+    const rect = canvasImage.value.$el.getBoundingClientRect();
+    const canvasRect = canvasRef.value.getBoundingClientRect();
+    const offsetX = rect.left - canvasRect.left;
+    const offsetY = rect.top - canvasRect.top;
+    const ratio = rect.width / tempCanvas.width;
+    let boxes = result.cropped_bboxes.map(box => ({
+      x: box[1],
+      y: box[0],
+      width: box[3],
+      height: box[2],
+    }));
+    boxes.forEach(box => {
+      box.area = box.width * box.height;
+    });
+    boxes.sort((a, b) => b.area - a.area);
+    const minArea = boxes[10].area * 0.25;
+    boxes = boxes.filter(box => box.area >= minArea);
+
+    for (let i = 0; i < boxes.length; i++) {
+      const toRemove = [];
+      for (let j = i + 1; j < boxes.length; j++) {
+        const box1 = boxes[i];
+        const box2 = boxes[j];
+        
+        // Calculate intersection area
+        const xOverlap = Math.max(0, Math.min(box1.x + box1.width, box2.x + box2.width) - Math.max(box1.x, box2.x));
+        const yOverlap = Math.max(0, Math.min(box1.y + box1.height, box2.y + box2.height) - Math.max(box1.y, box2.y));
+        const overlapArea = xOverlap * yOverlap;
+        
+        // Calculate box2's area
+        const box2Area = box2.width * box2.height;
+        
+        // If more than 85% of box2 is covered by box1, remove box2
+        if (overlapArea / box2Area > 0.85) {
+          toRemove.push(j);
+        }
+      }
+      // If box i overlaps with 3 or more other boxes, mark box i for removal
+      if (toRemove.length >= 3) {
+        boxes.splice(i, 1);
+        --i;
+      } else {
+        // Remove all marked boxes in reverse order to maintain correct indices
+        toRemove.reverse();
+        for (const index of toRemove) {
+          boxes.splice(index, 1);
+        }
+      }
+    }
     
-    // 更新元素列表
-    drawElements.value = newBoxes;
-    
+    for (let {x, y, width, height} of boxes) {
+      drawElements.value.push(createBoundingBox({
+        x: x * ratio + offsetX,
+        y: y * ratio + offsetY,
+        width: width * ratio,
+        height: height * ratio,
+        index: drawElements.value.length
+      }));
+    }
   } finally {
     analyzing.value = false;
   }
@@ -807,29 +1063,14 @@ const analyzeImage = async () => {
 
 // 生命周期钩子
 onMounted(() => {
-  window.addEventListener('resize', updateCanvasSize);
+  window.addEventListener('resize', debouncedUpdateCanvasSize());
+  // Initial canvas size setup
   updateCanvasSize();
 });
 
 onUnmounted(() => {
-  window.removeEventListener('resize', updateCanvasSize);
+  window.removeEventListener('resize', debouncedUpdateCanvasSize);
 });
-
-// 文本编辑相关状态
-
-// 开始编辑文本
-const startEditing = (index) => {
-  isEditing.value = true;
-  editingIndex.value = index;
-  // 下一个 tick 后聚焦并选中文本
-  nextTick(() => {
-    const textInput = document.querySelector('.editing-text');
-    if (textInput) {
-      textInput.focus();
-      textInput.select();
-    }
-  });
-};
 
 // 处理按键事件
 const handleKeyDown = (event) => {
@@ -839,85 +1080,21 @@ const handleKeyDown = (event) => {
   }
   if (event.key === 'Escape') {
     isEditing.value = false;
-    editingIndex.value = -1;
+    editingElementId.value = null;
   }
 };
 
 // 处理元素选中
-const selectElement = (index) => {
-  selectedElementIndex.value = index;
-};
-
-// 初始化工具栏位置在画布右上角
-const initToolboxPosition = () => {
-  const canvas = canvasRef.value;
-  if (canvas) {
-    const rect = canvas.getBoundingClientRect();
-    toolboxPosition.value = {
-      x: rect.right - 200, // 距离右边 200px
-      y: rect.top + 20    // 距离顶部 20px
-    };
-  }
-};
-
-// 监听画布加载完成
-onMounted(() => {
-  nextTick(() => {
-    initToolboxPosition();
-  });
-});
-
-// 更新当前选中元素的颜色
-const updateSelectedElementColor = (color) => {
-  if (selectedElementIndex.value !== -1) {
-    const element = drawElements.value[selectedElementIndex.value];
-    if (element.type === ELEMENT_TYPES.TEXT) {
-      element.style.color = color;
-    }
-  }
-};
-
-// 监听颜色变化
-watch(currentTextColor, (newColor) => {
-  updateSelectedElementColor(newColor);
-});
-
-// 字体大小选项
-const FONT_SIZES = [
-  { label: 'Small', value: '12px' },
-  { label: 'Middle', value: '16px' },
-  { label: 'Large', value: '20px' }
-];
-
-// 字体样式选项
-const FONT_STYLES = [
-  { label: 'Regular', value: 'normal' },
-  { label: 'Bold', value: 'bold' },
-  { label: 'Italic', value: 'italic' }
-];
-
-const currentFontSize = ref('16px');
-const currentFontStyle = ref('normal');
-
-// 更新文本样式
-const updateTextStyle = (property, value) => {
-  if (selectedElementIndex.value !== -1) {
-    const element = drawElements.value[selectedElementIndex.value];
-    if (element.type === ELEMENT_TYPES.TEXT) {
-      if (property === 'fontSize') {
-        element.style.fontSize = value;
-        currentFontSize.value = value;
-      } else if (property === 'fontStyle') {
-        element.style.fontStyle = value;
-        currentFontStyle.value = value;
-      }
-    }
+const selectElement = (event, element) => {
+  if (element) {
+    selectedElementId.value = element.id;
   } else {
-    // 如果没有选中元素，更新默认值
-    if (property === 'fontSize') currentFontSize.value = value;
-    if (property === 'fontStyle') currentFontStyle.value = value;
+    if (event && event.target === canvasRef.value) {
+      selectedElementId.value = null;
+    }
   }
 };
+
 
 // 处理画布点击
 const handleCanvasClick = (event) => {
@@ -931,47 +1108,18 @@ const handleCanvasClick = (event) => {
   }
 };
 
-// 监听选中元素变化，自动切换 tab
-watch(selectedElementIndex, (newIndex) => {
-  if (newIndex !== -1) {
-    const selectedElement = drawElements.value[newIndex];
-    currentMode.value = selectedElement.type;
-  }
-});
-
 // 获取元素样式
-const getElementStyle = (element, index) => {
-  const isSelected = selectedElementIndex.value === index;
+const getElementStyle = (element) => {
+  const elementId = element.id;
+  const isSelected = selectedElementId.value === elementId;
   
-  // 基础样式
-  const baseStyle = {
+  // 基础样式，移除边框和背景相关样式
+  return {
     left: `${element.x}px`,
     top: `${element.y}px`,
     width: `${element.width}px`,
     height: `${element.height}px`,
   };
-  
-  // 根据元素类型和选中状态设置特定样式
-  if (element.type === ELEMENT_TYPES.BOUNDING_BOX) {
-    return {
-      ...baseStyle,
-      border: isSelected 
-        ? `3px solid ${element.style.border.split(' ')[2]}`
-        : element.style.border,
-      backgroundColor: isSelected
-        ? element.style.backgroundColor.replace('0.1', '0.3')
-        : element.style.backgroundColor,
-    };
-  } else {
-    // 文本元素
-    return {
-      ...baseStyle,
-      border: isSelected 
-        ? `3px solid ${element.style.border.split(' ')[2]}`
-        : element.style.border,
-      backgroundColor: element.style.backgroundColor,
-    };
-  }
 };
 
 // 从 props 接收当前页面 ID
@@ -984,12 +1132,6 @@ const STORAGE_KEY_PREFIX = 'image_boxes_';
 // 获取当前图片的存储键
 const getStorageKey = (imageId) => `${STORAGE_KEY_PREFIX}${imageId}`;
 
-// 添加 getImageId 计算属性
-const getImageId = computed(() => {
-  if (!selectedImage.value) return null;
-  return selectedImage.value.split('/').pop(); // 获取文件名作为ID
-});
-
 // 修改 saveBoxesToStorage 函数
 const saveBoxesToStorage = (imageId) => {
   if (!imageId) return;
@@ -997,22 +1139,45 @@ const saveBoxesToStorage = (imageId) => {
   
   const storageKey = getStorageKey(imageId);
   try {
-    localStorage.setItem(storageKey, JSON.stringify(drawElements.value));
+    // 保存元素数据和画布宽度
+    const dataToSave = {
+      elements: drawElements.value,
+      canvasWidth: canvasRef.value?.offsetWidth || 0
+    };
+    localStorage.setItem(storageKey, JSON.stringify(dataToSave));
   } catch (error) {
     console.error('Failed to save boxes:', error);
   }
 };
 
-// 从localStorage加载指定图片的boxes
+// 修改 loadBoxesFromStorage 函数
 const loadBoxesFromStorage = (imageId) => {
-  if (!imageId) return;  // 添加安全检查
+  if (!imageId) return;
   imageId = imageId.split('?')[0];
   
   const storageKey = getStorageKey(imageId);
   try {
-    const savedBoxes = localStorage.getItem(storageKey);
-    if (savedBoxes) {
-      drawElements.value = JSON.parse(savedBoxes);
+    const savedData = localStorage.getItem(storageKey);
+    if (savedData) {
+      const { elements, canvasWidth: previousWidth } = JSON.parse(savedData);
+      const currentWidth = canvasRef.value?.offsetWidth || 0;
+      
+      if (previousWidth && currentWidth) {
+        // 计算宽度比例
+        const widthRatio = currentWidth / previousWidth;
+        
+        // 调整所有元素的位置和尺寸
+        drawElements.value = elements.map(element => ({
+          ...element,
+          x: element.x * widthRatio,
+          y: element.y * widthRatio,
+          width: element.width * widthRatio,
+          height: element.height * widthRatio
+        }));
+      } else {
+        // 如果没有之前的宽度信息，直接使用保存的元素
+        drawElements.value = elements;
+      }
     } else {
       drawElements.value = [];
     }
@@ -1020,7 +1185,177 @@ const loadBoxesFromStorage = (imageId) => {
     console.error('Failed to load boxes:', error);
     drawElements.value = [];
   }
+  console.log(drawElements.value);
 };
+
+// 添加计算文本高度的辅助函数
+const calculateTextHeight = (text, width, style) => {
+  // 创建临时 div 用于计算
+  const div = document.createElement('div');
+  div.style.position = 'absolute';
+  div.style.visibility = 'hidden';
+  div.style.width = `${width}px`;
+  div.style.padding = '8px'; // 与 text-content 的 padding 保持一致
+  
+  // 应用文本样式
+  div.style.fontSize = style.fontSize || '16px';
+  div.style.fontWeight = style.fontWeight || 'normal';
+  div.style.lineHeight = '1.5';
+  div.style.wordBreak = 'break-word';
+  div.style.whiteSpace = 'pre-wrap';
+  
+  div.textContent = text;
+  document.body.appendChild(div);
+  
+  // 获取实际高度并添加额外的 padding
+  const height = div.offsetHeight + 16; // 上下各加 8px padding
+  
+  // 清理临时元素
+  document.body.removeChild(div);
+  
+  return Math.max(height, 40); // 设置最小高度为 40px
+};
+
+// 修改 queryImage 函数
+const queryImage = async () => {
+  if (!canvasRef.value || !selectedImage.value) {
+    alert('请先选择一张图片');
+    return;
+  }
+  queryImageStatus.value = true;
+
+  // 获取图片元素
+  const imageElement = canvasImage.value?.$el?.querySelector('img');
+  if (!imageElement) {
+    queryImageStatus.value = false;
+    return;
+  }
+
+  const maxWidth = 1200;
+  const maxHeight = 1200;
+  const ratio = Math.min(maxWidth / imageElement.naturalWidth, maxHeight / imageElement.naturalHeight);
+
+
+  const boxes = drawElements.value.filter(element => element.type === ELEMENT_TYPES.BOUNDING_BOX);
+  const numBoxes = boxes.length;
+  // 创建所有查询的 Promise 数组
+  const queryPromises = [];
+  
+  // 添加整体分析的 Promise
+  const overallAnalysis = async () => {
+    const tempCanvas = document.createElement('canvas');
+    const ctx = tempCanvas.getContext('2d');
+    tempCanvas.width = imageElement.naturalWidth * ratio;
+    tempCanvas.height = imageElement.naturalHeight * ratio;
+
+    ctx.drawImage(imageElement, 0, 0, tempCanvas.width, tempCanvas.height);
+    const dataUrl = tempCanvas.toDataURL('image/png');
+    
+    const result = await analyzeWithOpenAI(dataUrl, customOverallPrompt.value);
+    const { title, description } = result;
+    
+    // 添加标题文本框
+    const titleStyle = {
+      fontSize: FONT_SIZES.find(size => size.label === 'Extra Large').value,
+      fontWeight: 'bold',
+      color: currentTextStyle.value.color
+    };
+    const titleWidth = 400;
+
+    drawElements.value.push(createTextElement({
+      x: imageElement.naturalWidth * 0.75 - titleWidth / 2,
+      y: 20,
+      width: titleWidth,
+      height: calculateTextHeight(title, titleWidth, titleStyle),
+      index: drawElements.value.length,
+      content: title,
+      style: titleStyle
+    }));
+    
+    const descStyle = {
+      fontSize: FONT_SIZES.find(size => size.label === 'Middle').value,
+      color: currentTextStyle.value.color
+    };
+    const descWidth = 600;
+    const titleHeight = calculateTextHeight(title, titleWidth, titleStyle);
+    drawElements.value.push(createTextElement({
+      x: imageElement.naturalWidth * 0.75 - descWidth / 2,
+      y: 40 + titleHeight,
+      width: descWidth,
+      height: calculateTextHeight(description, descWidth, descStyle),
+      index: drawElements.value.length,
+      content: description,
+      style: descStyle
+    }));
+  };
+  queryPromises.push(overallAnalysis());
+
+  // 添加每个框的分析 Promise
+  const scaleX = imageElement.naturalWidth / canvasImage.value.$el.offsetWidth * ratio;
+  const scaleY = imageElement.naturalHeight / canvasImage.value.$el.offsetHeight * ratio;
+  const rect = canvasImage.value.$el.getBoundingClientRect();
+  const canvasRect = canvasRef.value.getBoundingClientRect();
+  const offsetX = rect.left - canvasRect.left;
+  const offsetY = rect.top - canvasRect.top;
+
+  boxes.forEach((box) => {
+    const boxAnalysis = async () => {
+      const tempCanvas = document.createElement('canvas');
+      const ctx = tempCanvas.getContext('2d');
+      tempCanvas.width = imageElement.naturalWidth * ratio;
+      tempCanvas.height = imageElement.naturalHeight * ratio;
+
+      ctx.drawImage(imageElement, 0, 0, tempCanvas.width, tempCanvas.height);
+      ctx.lineWidth = 2;
+
+      // 转换坐标和尺寸到实际图片大小
+      const scaledX = (box.x - offsetX) * scaleX;
+      const scaledY = (box.y - offsetY) * scaleY;
+      const scaledWidth = box.width * scaleX;
+      const scaledHeight = box.height * scaleY;
+      ctx.strokeStyle = 'red';
+      ctx.strokeWidth = 4;
+      ctx.strokeRect(scaledX, scaledY, scaledWidth, scaledHeight);
+
+      const dataUrl = tempCanvas.toDataURL('image/png');
+      const result = await analyzeWithOpenAI(dataUrl, customBoxPrompt.value);
+      const { content } = result;
+
+      const elementStyle = {
+        fontSize: FONT_SIZES.find(size => size.label === 'Middle').value,
+        color: currentTextStyle.value.color
+      };
+
+      const elementWidth = 200;
+      const x = box.x + box.width / 2 - elementWidth / 2;
+      const y = box.y + box.height / 2 + 10;
+      const width = elementWidth;
+      const height = calculateTextHeight(content, width, elementStyle);
+
+      drawElements.value.push(createTextElement({
+        x: x,
+        y: y,
+        width,
+        height,
+        index: drawElements.value.length,
+        content: content,
+        style: elementStyle
+      }));
+    };
+    queryPromises.push(boxAnalysis());
+  });
+
+  // 等待所有查询完成
+  await Promise.all(queryPromises);
+
+  // const link = document.createElement('a');
+  // link.download = `annotated_${Date.now()}.png`;
+  // link.href = dataUrl;
+  // link.click();
+
+  queryImageStatus.value = false;
+}
+
 
 // 监听图片ID变化
 watch(() => props.imageId, (newImageId, oldImageId) => {
@@ -1030,9 +1365,9 @@ watch(() => props.imageId, (newImageId, oldImageId) => {
   if (newImageId) {
     loadBoxesFromStorage(newImageId);
     // 重置状态
-    selectedElementIndex.value = -1;
+    selectedElementId.value = null;
     isEditing.value = false;
-    editingIndex.value = -1;
+    editingElementId.value = null;
   }
 }, { immediate: true });
 
@@ -1041,53 +1376,6 @@ watch(drawElements, () => {
   saveBoxesToStorage(currentImageId.value);
 }, { deep: true });
 
-// 创建新元素时添加图片ID
-const createTextElement = (x, y) => ({
-  id: Date.now(),
-  imageId: currentImageId.value,
-  type: ELEMENT_TYPES.TEXT,
-  x,
-  y,
-  width: 200,
-  height: 100,
-  content: '双击编辑文本',
-  style: {
-    border: getBoxStyle(ELEMENT_TYPES.TEXT).border,
-    backgroundColor: getBoxStyle(ELEMENT_TYPES.TEXT).backgroundColor,
-    color: currentTextColor.value,
-    fontSize: currentFontSize.value,
-    fontStyle: currentFontStyle.value,
-  }
-});
-
-const createPictogramElement = (x, y) => ({
-  id: Date.now(),
-  imageId: currentImageId.value,
-  type: ELEMENT_TYPES.PICTOGRAM,
-  x,
-  y,
-  width: 100,
-  height: 100,
-  content: currentPictogram.value,
-  style: {
-    border: getBoxStyle(ELEMENT_TYPES.PICTOGRAM).border,
-    backgroundColor: getBoxStyle(ELEMENT_TYPES.PICTOGRAM).backgroundColor,
-  }
-});
-
-const createBoundingBox = (x, y) => ({
-  id: Date.now(),
-  imageId: currentImageId.value,
-  type: ELEMENT_TYPES.BOUNDING_BOX,
-  x,
-  y,
-  width: 150,
-  height: 150,
-  style: {
-    border: getBoxStyle(ELEMENT_TYPES.BOUNDING_BOX).border,
-    backgroundColor: getBoxStyle(ELEMENT_TYPES.BOUNDING_BOX).backgroundColor,
-  }
-});
 
 // 组件卸载时保存数据
 onUnmounted(() => {
@@ -1095,24 +1383,20 @@ onUnmounted(() => {
 });
 
 // 处理标题栏拖动
-const startTitleDrag = (event, index) => {
+const startTitleDrag = (event, id) => {
   if (event.target.classList.contains('delete-button')) return;
   
   event.stopPropagation();
   
   isDragging.value = true;
-  mouseDownPos.value = {
-    x: event.clientX,
-    y: event.clientY
-  };
   
-  const element = drawElements.value[index];
+  const element = drawElements.value.find(el => el.id === id);
   dragOffset.value = {
     x: event.clientX - element.x,
     y: event.clientY - element.y
   };
   
-  selectedElementIndex.value = index;
+  selectedElementId.value = id;
   
   document.addEventListener('mousemove', handleDrag);
   document.addEventListener('mouseup', stopDrag);
@@ -1130,33 +1414,91 @@ watch(() => selectedImage.value, (newImage, oldImage) => {
     currentImageId.value = newImage.split('/').pop();  // 更新当前图片ID
     loadBoxesFromStorage(currentImageId.value);
     // 重置状态
-    selectedElementIndex.value = -1;
+    selectedElementId.value = null;
     isEditing.value = false;
-    editingIndex.value = -1;
+    editingElementId.value = null;
+    console.log("selectedImage", selectedImage.value)
   }
 });
 
+watch(() => canvasImage.value, () => {
+  const img = canvasImage.value.$el.querySelector('img');
+  imageRatio.value = img?.naturalWidth / img?.naturalHeight || 0;
+  console.log("imageRatio", imageRatio.value);
+});
+
 // 删除元素
-const deleteElement = (index) => {
-  // 如果正在编辑文本，先取消编辑状态
-  if (isEditing.value && editingIndex.value === index) {
-    isEditing.value = false;
-    editingIndex.value = -1;
+const deleteElement = (element) => {
+  const index = drawElements.value.findIndex(el => el.id === element.id);
+  if (index !== -1) {
+    drawElements.value.splice(index, 1);
+    if (selectedElementId.value === element.id) {
+      selectedElementId.value = null;
+    }
+    saveBoxesToStorage(props.imageId);
   }
-  
-  // 如果删除的是当前选中的元素，取消选中状态
-  if (selectedElementIndex.value === index) {
-    selectedElementIndex.value = -1;
-  } else if (selectedElementIndex.value > index) {
-    // 如果删除的元素在当前选中元素之前，需要更新选中索引
-    selectedElementIndex.value--;
+};
+
+// 当选中元素变化时，更新当前样式状态
+watch(selectedElementId, (newId) => {
+  if (newId !== null) {
+    const element = drawElements.value.find(el => el.id === newId);
+    currentMode.value = element.type;
+    if (element && element.type === ELEMENT_TYPES.TEXT) {
+      // 更新当前样式状态以匹配选中元素
+      currentTextStyle.value = {
+        color: element.style.color,
+        fontSize: element.style.fontSize,
+        fontWeight: element.style.fontWeight
+      };
+    }
   }
+});
+
+// Add these new refs for tracking canvas dimensions
+const previousCanvasSize = ref({ width: 0, height: 0 });
+
+// 使用现有的常量数组，只需要添加新的处理函数
+const updateFontSize = (size) => {
+  if (selectedElementId.value) {
+    const element = drawElements.value.find(el => el.id === selectedElementId.value);
+    if (element && element.type === ELEMENT_TYPES.TEXT) {
+      element.style.fontSize = size;
+      saveBoxesToStorage(props.imageId);
+    }
+  }
+};
+
+const updateFontStyle = (style) => {
+  if (selectedElementId.value) {
+    const element = drawElements.value.find(el => el.id === selectedElementId.value);
+    if (element && element.type === ELEMENT_TYPES.TEXT) {
+      element.style.fontWeight = style;
+      saveBoxesToStorage(props.imageId);
+    }
+  }
+};
+
+// 添加新的 getBoxStyle 函数
+const getBoxStyle = (element) => {
+  const elementId = element.id;
+  const isSelected = selectedElementId.value === elementId;
+  const boxStyle = getBoxType(element.type);
   
-  // 从数组中删除元素
-  drawElements.value.splice(index, 1);
-  
-  // 保存更改到存储
-  saveBoxesToStorage(currentImageId.value);
+  return {
+    left: `${element.x}px`,
+    top: `${element.y}px`,
+    width: `${element.width}px`,
+    height: `${element.height}px`,
+    border: isSelected 
+      ? `4px solid ${boxStyle.border.split(' ')[2]}`
+      : boxStyle.border,
+    backgroundColor: isSelected
+      ? boxStyle.backgroundColor.replace('0.1', '0.4')
+      : boxStyle.backgroundColor,
+    pointerEvents: 'none', // 确保box不会干扰元素的交互
+    position: 'absolute',
+  };
 };
 
 </script>

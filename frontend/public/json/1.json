@@ -1,0 +1,129 @@
+{
+    "meta_data": {
+        "x_type": "categorical",
+        "y_type": "numerical",
+        "x_label": "Country",
+        "x_icon": "",
+        "y_label": "Spices Production (Kg)",
+        "y_icon": "",
+        "x_axis": "Country",
+        "x_axis_icon": "",
+        "y_axis": "Spices Production (Kg)",
+        "y_axis_icon": "",
+        "y_color": [
+            [
+                255,
+                217,
+                47
+            ]
+        ],
+        "title": "",
+        "topic_icon": "",
+        "caption": "",
+        "group_indicator": [
+            ""
+        ]
+    },
+    "data": [
+        {
+            "x_data": "India",
+            "y_data": 1920000000,
+            "x_data_icon": "",
+            "group": ""
+        },
+        {
+            "x_data": "Turkey",
+            "y_data": 292000000,
+            "x_data_icon": "",
+            "group": ""
+        },
+        {
+            "x_data": "Bangladesh",
+            "y_data": 178000000,
+            "x_data_icon": "",
+            "group": ""
+        },
+        {
+            "x_data": "China",
+            "y_data": 110000000,
+            "x_data_icon": "",
+            "group": ""
+        },
+        {
+            "x_data": "Indonesia",
+            "y_data": 110000000,
+            "x_data_icon": "",
+            "group": ""
+        },
+        {
+            "x_data": "Pakistan",
+            "y_data": 76347000,
+            "x_data_icon": "",
+            "group": ""
+        },
+        {
+            "x_data": "Ethiopia",
+            "y_data": 39898000,
+            "x_data_icon": "",
+            "group": ""
+        },
+        {
+            "x_data": "Nepal",
+            "y_data": 24318000,
+            "x_data_icon": "",
+            "group": ""
+        },
+        {
+            "x_data": "Colombia",
+            "y_data": 15892000,
+            "x_data_icon": "",
+            "group": ""
+        },
+        {
+            "x_data": "Myanmar",
+            "y_data": 9694000,
+            "x_data_icon": "",
+            "group": ""
+        },
+        {
+            "x_data": "Nigeria",
+            "y_data": 7093000,
+            "x_data_icon": "",
+            "group": ""
+        },
+        {
+            "x_data": "Burkina Faso",
+            "y_data": 6388000,
+            "x_data_icon": "",
+            "group": ""
+        },
+        {
+            "x_data": "Bhutan",
+            "y_data": 5614000,
+            "x_data_icon": "",
+            "group": ""
+        },
+        {
+            "x_data": "Sri Lanka",
+            "y_data": 5485000,
+            "x_data_icon": "",
+            "group": ""
+        },
+        {
+            "x_data": "Niger",
+            "y_data": 5080000,
+            "x_data_icon": "",
+            "group": ""
+        }
+    ],
+    "input_styles": {
+        "annotate_data": true,
+        "show_legend": false,
+        "x_axis_styles": {
+            "angle": -90
+        },
+        "y_axis_styles": {
+            "angle": 0
+        }
+    }
+}

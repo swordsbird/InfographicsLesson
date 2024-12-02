@@ -1,7 +1,7 @@
 <template>
   <v-app>
     <!-- 顶部导航栏 -->
-    <v-app-bar color="white" elevation="0" border>
+    <v-app-bar color="dark" elevation="0" border>
       <v-container class="px-4" fluid>
         <v-row align="center" no-gutters>
           <!-- 左对齐标题 -->
@@ -11,8 +11,9 @@
           
           <v-col>
             <v-tabs v-model="activeTab">
-              <v-tab value="understand">理解</v-tab>
-              <v-tab value="design">设计</v-tab>
+              <v-tab value="understand" class="text-h6">理解</v-tab>
+              <v-tab value="segment" class="text-h6">提取图像</v-tab>
+              <v-tab value="design" class="text-h6">设计</v-tab>
             </v-tabs>
           </v-col>
         </v-row>
@@ -22,6 +23,9 @@
     <v-window v-model="activeTab">
       <v-window-item value="understand">
         <UnderstandView />
+      </v-window-item>
+      <v-window-item value="segment">
+        <SegmentView />
       </v-window-item>
       <v-window-item value="design">
         <DesignView />
@@ -34,6 +38,7 @@
 <script>
 import UnderstandView from './components/UnderstandView.vue';
 import DesignView from './components/DesignView.vue';
+import SegmentView from './components/SegmentView.vue';
 
 export default {
   name: 'App',

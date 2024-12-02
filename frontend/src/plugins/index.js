@@ -1,12 +1,11 @@
 /**
  * plugins/index.js
  *
- * Automatically included in `./src/main.js`
+ * Automatically included in `./main.js`
  */
 
-// Plugins
 import vuetify from './vuetify'
 
-export function registerPlugins (app) {
-  app.use(vuetify)
+export function registerPlugins(app) {
+  app.use(vuetify) // 注册 Vuetify
 }
